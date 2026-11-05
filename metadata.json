@@ -1,0 +1,8 @@
+{
+  "name": "NexusSheet - Relational Spreadsheet & Visual Analytics",
+  "description": "Professional relational spreadsheet interface with multi-sheet relationships, intelligent column categorization, interactive Excel and CSV import/export, and dynamic visual analytics dashboard.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
