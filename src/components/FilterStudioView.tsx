@@ -1,14 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Filter,
   Plus,
   Trash2,
   CheckCircle,
-  Sparkles,
-  ArrowRight,
   RotateCcw,
-  Sliders,
-  Check
+  AlertTriangle,
+  Info
 } from 'lucide-react';
 import { FilterOperator, FilterRule, Sheet } from '../types/spreadsheet';
 
@@ -38,25 +36,87 @@ export const FilterStudioView: React.FC<FilterStudioViewProps> = ({
   const [filterValue, setFilterValue] = useState('');
   const [secondValue, setSecondValue] = useState('');
 
-  const currentColumn = sheet.columns.find((c) => c.key === selectedColumnKey);
+  // Synchronize selected column whenever active sheet changes or columns list changes
+  useEffect(() => {
+    if (!sheet.columns.some((c) => c.key === selectedColumnKey)) {
+      const defaultCol = sheet.columns[0];
+      const defaultKey = defaultCol?.key || '';
+      setSelectedColumnKey(defaultKey);
+      if (defaultCol) {
+        if (
+          defaultCol.type === 'number' ||
+          defaultCol.type === 'currency' ||
+          defaultCol.type === 'percentage'
+        ) {
+          setSelectedOperator('greater_than');
+        } else if (defaultCol.type === 'category') {
+          setSelectedOperator('equals');
+        } else if (defaultCol.type === 'date') {
+          setSelectedOperator('date_range');
+        } else {
+          setSelectedOperator('contains');
+        }
+      }
+      setFilterValue('');
+      setSecondValue('');
+    }
+  }, [sheet.id, sheet.columns, selectedColumnKey]);
+
+  const currentColumn =
+    sheet.columns.find((c) => c.key === selectedColumnKey) || sheet.columns[0];
+
+  const handleColumnChange = (key: string) => {
+    setSelectedColumnKey(key);
+    const col = sheet.columns.find((c) => c.key === key);
+    if (!col) return;
+
+    if (
+      col.type === 'number' ||
+      col.type === 'currency' ||
+      col.type === 'percentage' ||
+      col.type === 'rating'
+    ) {
+      setSelectedOperator('greater_than');
+    } else if (col.type === 'category') {
+      setSelectedOperator('equals');
+    } else if (col.type === 'date') {
+      setSelectedOperator('date_range');
+    } else {
+      setSelectedOperator('contains');
+    }
+    setFilterValue('');
+    setSecondValue('');
+  };
 
   const handleAddFilterSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedColumnKey) return;
+
+    // Value validation for operators that need a value
+    const requiresValue = !['is_empty', 'is_not_empty', 'this_month', 'this_year'].includes(
+      selectedOperator
+    );
+    if (requiresValue && String(filterValue).trim() === '') {
+      return;
+    }
 
     onAddFilter({
       id: `filter-${Date.now()}`,
       columnKey: selectedColumnKey,
       operator: selectedOperator,
       value: filterValue,
-      secondValue: selectedOperator === 'between' || selectedOperator === 'date_range' ? secondValue : undefined,
+      secondValue:
+        selectedOperator === 'between' || selectedOperator === 'date_range'
+          ? secondValue
+          : undefined,
     });
 
     setFilterValue('');
     setSecondValue('');
   };
 
-  const reductionPercent = totalRows > 0 ? (((totalRows - filteredRows) / totalRows) * 100).toFixed(0) : 0;
+  const reductionPercent =
+    totalRows > 0 ? (((totalRows - filteredRows) / totalRows) * 100).toFixed(0) : '0';
 
   return (
     <div className="flex-1 bg-slate-50 p-6 overflow-y-auto space-y-6">
@@ -78,7 +138,7 @@ export const FilterStudioView: React.FC<FilterStudioViewProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <div className="bg-slate-50 border border-slate-200 px-4 py-2 rounded-lg text-xs">
             <span className="text-slate-500">Hasil Saringan: </span>
             <strong className="text-slate-900 font-bold">{filteredRows}</strong> dari{' '}
@@ -97,6 +157,8 @@ export const FilterStudioView: React.FC<FilterStudioViewProps> = ({
         </div>
       </div>
 
+
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Column: Create New Condition Form */}
         <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs space-y-4">
@@ -110,8 +172,8 @@ export const FilterStudioView: React.FC<FilterStudioViewProps> = ({
               <label className="block text-slate-700 font-semibold mb-1">Target Kolom</label>
               <select
                 value={selectedColumnKey}
-                onChange={(e) => setSelectedColumnKey(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white text-slate-900 text-xs"
+                onChange={(e) => handleColumnChange(e.target.value)}
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white text-slate-900 text-xs focus:ring-1 focus:ring-slate-400"
               >
                 {sheet.columns.map((c) => (
                   <option key={c.key} value={c.key}>
@@ -126,7 +188,7 @@ export const FilterStudioView: React.FC<FilterStudioViewProps> = ({
               <select
                 value={selectedOperator}
                 onChange={(e) => setSelectedOperator(e.target.value as FilterOperator)}
-                className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white text-slate-900 text-xs"
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white text-slate-900 text-xs focus:ring-1 focus:ring-slate-400"
               >
                 <option value="contains">Mengandung teks (Contains)</option>
                 <option value="not_contains">Tidak mengandung (Does not contain)</option>
@@ -138,6 +200,7 @@ export const FilterStudioView: React.FC<FilterStudioViewProps> = ({
                 <option value="less_equal">Lebih kecil atau sama (≤)</option>
                 <option value="between">Di antara rentang (Between)</option>
                 <option value="starts_with">Diawali teks (Starts with)</option>
+                <option value="ends_with">Diakhiri teks (Ends with)</option>
                 <option value="is_empty">Kosong (Is Empty)</option>
                 <option value="is_not_empty">Tidak Kosong (Is Not Empty)</option>
                 <option value="date_range">Rentang Tanggal (Date Range)</option>
@@ -169,16 +232,30 @@ export const FilterStudioView: React.FC<FilterStudioViewProps> = ({
                     type={
                       selectedOperator === 'date_range'
                         ? 'date'
-                        : currentColumn?.type === 'number' || currentColumn?.type === 'currency'
-                        ? 'number'
+                        : currentColumn?.type === 'number' ||
+                          currentColumn?.type === 'currency' ||
+                          currentColumn?.type === 'percentage'
+                        ? 'text'
                         : 'text'
                     }
                     value={filterValue}
                     onChange={(e) => setFilterValue(e.target.value)}
-                    placeholder="Masukkan nilai filter..."
+                    placeholder={
+                      currentColumn?.type === 'currency'
+                        ? 'Contoh: 40000000 atau 40.000.000'
+                        : selectedOperator === 'date_range'
+                        ? 'YYYY-MM-DD'
+                        : 'Masukkan nilai filter...'
+                    }
                     required
                     className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white text-slate-900 text-xs"
                   />
+                )}
+                {currentColumn?.type === 'currency' && (
+                  <p className="text-[10px] text-slate-400 mt-1 flex items-center gap-1">
+                    <Info className="w-3 h-3 text-slate-400" />
+                    <span>Dukungan otomatis format angka desimal dan titik ribuan rupiah (IDR).</span>
+                  </p>
                 )}
               </div>
             )}
@@ -189,10 +266,14 @@ export const FilterStudioView: React.FC<FilterStudioViewProps> = ({
                   {selectedOperator === 'date_range' ? 'Sampai Tanggal' : 'Nilai Maksimal'}
                 </label>
                 <input
-                  type={selectedOperator === 'date_range' ? 'date' : 'number'}
+                  type={selectedOperator === 'date_range' ? 'date' : 'text'}
                   value={secondValue}
                   onChange={(e) => setSecondValue(e.target.value)}
-                  placeholder="Batas maksimal..."
+                  placeholder={
+                    selectedOperator === 'date_range'
+                      ? 'YYYY-MM-DD'
+                      : 'Batas maksimal (contoh: 80000000)...'
+                  }
                   required
                   className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white text-slate-900 text-xs"
                 />
@@ -213,7 +294,9 @@ export const FilterStudioView: React.FC<FilterStudioViewProps> = ({
           <div className="space-y-4">
             <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 pb-2 border-b border-slate-100 flex items-center justify-between">
               <span>Rantai Aturan Filter Aktif ({filters.length})</span>
-              <span className="text-[11px] text-slate-400 font-normal">Logika Evaluasi: AND (Semua terpenuhi)</span>
+              <span className="text-[11px] text-slate-400 font-normal">
+                Logika Evaluasi: AND (Semua kriteria terpenuhi)
+              </span>
             </h3>
 
             {filters.length === 0 ? (
@@ -221,29 +304,41 @@ export const FilterStudioView: React.FC<FilterStudioViewProps> = ({
                 <Filter className="w-10 h-10 mx-auto text-slate-200 mb-2" />
                 <p className="font-semibold text-slate-600 text-xs">Belum Ada Filter Diterapkan</p>
                 <p className="text-[11px] text-slate-400 mt-1">
-                  Gunakan formulir di sisi kiri untuk memfilter data berdasarkan kolom tertentu.
+                  Gunakan formulir di sisi kiri atau tombol preset demo di atas untuk memfilter data.
                 </p>
               </div>
             ) : (
               <div className="space-y-2.5">
                 {filters.map((f, idx) => {
                   const col = sheet.columns.find((c) => c.key === f.columnKey);
+                  const isOrphaned = !col;
 
                   return (
                     <div
                       key={f.id}
-                      className="p-3 bg-slate-50 border border-slate-200 rounded-lg flex items-center justify-between gap-4 text-xs hover:border-slate-300 transition-colors"
+                      className={`p-3 border rounded-lg flex items-center justify-between gap-4 text-xs transition-colors ${
+                        isOrphaned
+                          ? 'bg-amber-50/50 border-amber-200 text-amber-900'
+                          : 'bg-slate-50 border-slate-200 text-slate-800 hover:border-slate-300'
+                      }`}
                     >
                       <div className="flex items-center gap-3">
-                        <span className="w-6 h-6 rounded-full bg-slate-200 text-slate-700 font-mono text-[11px] flex items-center justify-center font-bold">
+                        <span className="w-6 h-6 rounded-full bg-slate-200 text-slate-700 font-mono text-[11px] flex items-center justify-center font-bold shrink-0">
                           {idx + 1}
                         </span>
                         <div>
                           <div className="font-bold text-slate-900 flex items-center gap-1.5">
                             <span>{col?.name || f.columnKey}</span>
-                            <span className="text-[10px] bg-slate-200 text-slate-600 px-1.5 py-0.2 rounded font-normal font-mono">
-                              {col?.category}
-                            </span>
+                            {col?.category ? (
+                              <span className="text-[10px] bg-slate-200 text-slate-600 px-1.5 py-0.2 rounded font-normal font-mono">
+                                {col.category}
+                              </span>
+                            ) : (
+                              <span className="text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.2 rounded font-normal flex items-center gap-1">
+                                <AlertTriangle className="w-2.5 h-2.5" />
+                                <span>Kolom di luar sheet ini</span>
+                              </span>
+                            )}
                           </div>
                           <div className="text-[11px] text-slate-500 mt-0.5 font-mono">
                             operator: <strong className="text-slate-800">{f.operator}</strong> · target:{' '}
