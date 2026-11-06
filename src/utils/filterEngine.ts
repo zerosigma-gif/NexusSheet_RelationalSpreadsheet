@@ -127,16 +127,66 @@ export function filterRows(
         switch (rule.operator) {
           case 'contains': {
             if (rawVal === null || rawVal === undefined) return false;
-            const query = String(rule.value || '').toLowerCase().trim();
+            const query = String(rule.value || '').trim();
             if (!query) return true;
-            return String(rawVal).toLowerCase().includes(query);
+
+            // 1. If user typed comparison prefix like "> 22000000", ">= 22000000", "< 22000000", "<= 22000000"
+            const matchGte = query.match(/^>=\s*(.+)$/);
+            if (matchGte) {
+              const numVal = parseNumericValue(rawVal);
+              const numRule = parseNumericValue(matchGte[1]);
+              if (!isNaN(numVal) && !isNaN(numRule)) return numVal >= numRule;
+            }
+            const matchGt = query.match(/^>\s*(.+)$/);
+            if (matchGt) {
+              const numVal = parseNumericValue(rawVal);
+              const numRule = parseNumericValue(matchGt[1]);
+              if (!isNaN(numVal) && !isNaN(numRule)) return numVal > numRule;
+            }
+            const matchLte = query.match(/^<=\s*(.+)$/);
+            if (matchLte) {
+              const numVal = parseNumericValue(rawVal);
+              const numRule = parseNumericValue(matchLte[1]);
+              if (!isNaN(numVal) && !isNaN(numRule)) return numVal <= numRule;
+            }
+            const matchLt = query.match(/^<\s*(.+)$/);
+            if (matchLt) {
+              const numVal = parseNumericValue(rawVal);
+              const numRule = parseNumericValue(matchLt[1]);
+              if (!isNaN(numVal) && !isNaN(numRule)) return numVal < numRule;
+            }
+
+            // 2. Direct string contains
+            const cleanQuery = query.toLowerCase();
+            const rawStr = String(rawVal).toLowerCase();
+            if (rawStr.includes(cleanQuery)) return true;
+
+            // 3. Normalized numeric contains for currency/numbers
+            const numVal = parseNumericValue(rawVal);
+            const numQuery = parseNumericValue(query);
+            if (!isNaN(numVal) && !isNaN(numQuery)) {
+              if (String(numVal).includes(String(numQuery))) return true;
+            }
+
+            return false;
           }
 
           case 'not_contains': {
             if (rawVal === null || rawVal === undefined) return true;
-            const query = String(rule.value || '').toLowerCase().trim();
+            const query = String(rule.value || '').trim();
             if (!query) return true;
-            return !String(rawVal).toLowerCase().includes(query);
+
+            const cleanQuery = query.toLowerCase();
+            const rawStr = String(rawVal).toLowerCase();
+            if (rawStr.includes(cleanQuery)) return false;
+
+            const numVal = parseNumericValue(rawVal);
+            const numQuery = parseNumericValue(query);
+            if (!isNaN(numVal) && !isNaN(numQuery)) {
+              if (String(numVal).includes(String(numQuery))) return false;
+            }
+
+            return true;
           }
 
           case 'equals': {
@@ -437,8 +487,9 @@ export function resolveRelation(
     return { targetRow: null, displayText: String(foreignKeyValue) };
   }
 
+  const searchVal = String(foreignKeyValue).trim().toLowerCase();
   const row = targetSheet.data.find(
-    (r) => String(r[relation.targetColumnKey]) === String(foreignKeyValue)
+    (r) => String(r[relation.targetColumnKey]).trim().toLowerCase() === searchVal
   );
 
   if (!row) {
@@ -484,8 +535,9 @@ export function executeRelationalJoin(
 
   primarySheet.data.forEach((pRow, idx) => {
     const pKeyVal = pRow[config.primaryKeyColumn];
+    const pKeyStr = String(pKeyVal || '').trim().toLowerCase();
     const matchRow = foreignSheet.data.find(
-      (fRow) => String(fRow[config.foreignKeyColumn]) === String(pKeyVal)
+      (fRow) => String(fRow[config.foreignKeyColumn] || '').trim().toLowerCase() === pKeyStr
     );
 
     if (config.joinType === 'inner' && !matchRow) {

@@ -4,9 +4,11 @@ import {
   Filter,
   X,
   RotateCcw,
-  ChevronDown
+  ChevronDown,
+  Palette,
+  Sparkles
 } from 'lucide-react';
-import { ColumnDef, FilterOperator, FilterRule, Sheet } from '../types/spreadsheet';
+import { ColumnDef, FilterOperator, FilterRule, Sheet, ConditionalFormattingRule } from '../types/spreadsheet';
 
 interface FilterBarProps {
   sheet: Sheet;
@@ -18,6 +20,10 @@ interface FilterBarProps {
   onClearAllFilters: () => void;
   totalRowCount: number;
   filteredRowCount: number;
+  conditionalRules?: ConditionalFormattingRule[];
+  onOpenConditionalFormatting?: () => void;
+  onToggleConditionalRule?: (ruleId: string) => void;
+  onRemoveConditionalRule?: (ruleId: string) => void;
 }
 
 export const FilterBar: React.FC<FilterBarProps> = ({
@@ -30,7 +36,12 @@ export const FilterBar: React.FC<FilterBarProps> = ({
   onClearAllFilters,
   totalRowCount,
   filteredRowCount,
+  conditionalRules = [],
+  onOpenConditionalFormatting,
+  onToggleConditionalRule,
+  onRemoveConditionalRule,
 }) => {
+  const activeRulesCount = conditionalRules.filter((r) => r.enabled).length;
   const [filterPopoverOpen, setFilterPopoverOpen] = useState(false);
   const [selectedColumnKey, setSelectedColumnKey] = useState<string>(
     sheet.columns[0]?.key || ''
@@ -321,7 +332,22 @@ export const FilterBar: React.FC<FilterBarProps> = ({
             )}
           </div>
 
-
+          {/* Conditional Formatting Trigger Button */}
+          {onOpenConditionalFormatting && (
+            <button
+              onClick={onOpenConditionalFormatting}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200/80 text-slate-800 text-xs font-semibold rounded-lg transition-colors shadow-2xs whitespace-nowrap"
+              title="Kelola Aturan Format Bersyarat (Heatmap, Skala Warna, Kumpulan Ikon)"
+            >
+              <Palette className="w-3.5 h-3.5 text-indigo-600" />
+              <span>Format Bersyarat</span>
+              {activeRulesCount > 0 && (
+                <span className="w-4 h-4 rounded-full bg-indigo-600 text-white text-[10px] flex items-center justify-center font-bold">
+                  {activeRulesCount}
+                </span>
+              )}
+            </button>
+          )}
         </div>
 
         {/* Right: Counter badge & Clear All */}
@@ -346,31 +372,73 @@ export const FilterBar: React.FC<FilterBarProps> = ({
         </div>
       </div>
 
-      {/* Active Filter Chips */}
-      {filters.length > 0 && (
+      {/* Active Filter & Conditional Format Chips */}
+      {(filters.length > 0 || (conditionalRules && conditionalRules.some((r) => r.enabled))) && (
         <div className="flex flex-wrap items-center gap-1.5 pt-1">
-          <span className="text-[11px] font-medium text-slate-400">Filter Aktif:</span>
-          {filters.map((f) => {
-            const col = sheet.columns.find((c) => c.key === f.columnKey);
-            return (
-              <span
-                key={f.id}
-                className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] bg-slate-100 text-slate-800 border border-slate-200 shadow-2xs font-medium"
-              >
-                <span className="text-slate-500">{col?.name || f.columnKey}</span>
-                <span className="text-slate-400 font-mono text-[10px]">{getOperatorLabel(f.operator)}</span>
-                <span className="font-semibold text-slate-900">
-                  {f.secondValue ? `${f.value} s/d ${f.secondValue}` : String(f.value || '')}
-                </span>
-                <button
-                  onClick={() => onRemoveFilter(f.id)}
-                  className="p-0.5 hover:bg-slate-200 rounded-full text-slate-400 hover:text-slate-600 transition-colors"
-                >
-                  <X className="w-3 h-3" />
-                </button>
-              </span>
-            );
-          })}
+          {filters.length > 0 && (
+            <>
+              <span className="text-[11px] font-medium text-slate-400">Filter:</span>
+              {filters.map((f) => {
+                const col = sheet.columns.find((c) => c.key === f.columnKey);
+                return (
+                  <span
+                    key={f.id}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] bg-slate-100 text-slate-800 border border-slate-200 shadow-2xs font-medium"
+                  >
+                    <span className="text-slate-500">{col?.name || f.columnKey}</span>
+                    <span className="text-slate-400 font-mono text-[10px]">{getOperatorLabel(f.operator)}</span>
+                    <span className="font-semibold text-slate-900">
+                      {f.secondValue ? `${f.value} s/d ${f.secondValue}` : String(f.value || '')}
+                    </span>
+                    <button
+                      onClick={() => onRemoveFilter(f.id)}
+                      className="p-0.5 hover:bg-slate-200 rounded-full text-slate-400 hover:text-slate-600 transition-colors"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                );
+              })}
+            </>
+          )}
+
+          {conditionalRules && conditionalRules.filter((r) => r.enabled).length > 0 && (
+            <>
+              <span className="text-[11px] font-medium text-indigo-500 ml-1">Format Bersyarat:</span>
+              {conditionalRules
+                .filter((r) => r.enabled)
+                .map((r) => {
+                  const col = sheet.columns.find((c) => c.key === r.columnKey);
+                  return (
+                    <span
+                      key={r.id}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] bg-indigo-50/80 text-indigo-900 border border-indigo-200 shadow-2xs font-medium"
+                    >
+                      <Palette className="w-3 h-3 text-indigo-600" />
+                      <span className="text-indigo-700">{col?.name || r.columnKey}</span>
+                      <span className="text-indigo-500 font-mono text-[10px]">
+                        {r.type === 'color_scale'
+                          ? '🔥 Heatmap'
+                          : r.type === 'icon_set'
+                          ? '🚦 Ikon'
+                          : r.type === 'data_bar'
+                          ? '📊 DataBar'
+                          : '✨ Sorot'}
+                      </span>
+                      {onRemoveConditionalRule && (
+                        <button
+                          onClick={() => onRemoveConditionalRule(r.id)}
+                          className="p-0.5 hover:bg-indigo-200 rounded-full text-indigo-400 hover:text-indigo-700 transition-colors"
+                          title="Hapus format bersyarat ini"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      )}
+                    </span>
+                  );
+                })}
+            </>
+          )}
         </div>
       )}
     </div>

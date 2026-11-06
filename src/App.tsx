@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { INITIAL_SHEETS } from './data/demoData';
-import { Sheet, FilterRule, SortConfig, ColumnDef } from './types/spreadsheet';
+import { Sheet, FilterRule, SortConfig, ColumnDef, ConditionalFormattingRule } from './types/spreadsheet';
 import { filterRows, sortRows } from './utils/filterEngine';
 import {
   parseExcelFile,
@@ -16,6 +16,8 @@ import { SpreadsheetGrid } from './components/SpreadsheetGrid';
 import { VisualAnalytics } from './components/VisualAnalytics';
 import { RelationalExplorer } from './components/RelationalExplorer';
 import { FilterStudioView } from './components/FilterStudioView';
+import { ConditionalFormattingModal } from './components/ConditionalFormattingModal';
+import { getDefaultConditionalRules } from './utils/conditionalFormatEngine';
 import { CheckCircle2, AlertCircle } from 'lucide-react';
 import { getEvaluatedSheet } from './utils/formulaEngine';
 
@@ -37,6 +39,12 @@ export default function App() {
   // Sheet-specific filters and sorting
   const [filtersBySheet, setFiltersBySheet] = useState<Record<string, FilterRule[]>>({});
   const [sortConfigBySheet, setSortConfigBySheet] = useState<Record<string, SortConfig | null>>({});
+
+  // Conditional formatting rules per sheet
+  const [conditionalRulesBySheet, setConditionalRulesBySheet] = useState<Record<string, ConditionalFormattingRule[]>>({
+    'sheet-orders': getDefaultConditionalRules('sheet-orders'),
+  });
+  const [showConditionalModal, setShowConditionalModal] = useState<boolean>(false);
 
   // Notification toast
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
@@ -117,6 +125,11 @@ export default function App() {
   const currentSortConfig = useMemo(
     () => sortConfigBySheet[activeSheet?.id] || null,
     [sortConfigBySheet, activeSheet?.id]
+  );
+
+  const currentConditionalRules = useMemo(
+    () => conditionalRulesBySheet[activeSheet?.id] || [],
+    [conditionalRulesBySheet, activeSheet?.id]
   );
   // Filter and sort active sheet data
   const processedRows = useMemo(() => {
@@ -418,6 +431,48 @@ export default function App() {
     }));
   };
 
+  // Conditional Formatting Operations
+  const handleAddConditionalRule = (rule: ConditionalFormattingRule) => {
+    saveStateForUndo();
+    setConditionalRulesBySheet((prev) => {
+      const existing = prev[activeSheet.id] || [];
+      return { ...prev, [activeSheet.id]: [...existing, rule] };
+    });
+    showToast(`Aturan format bersyarat "${rule.name || 'Baru'}" ditambahkan.`, 'success');
+  };
+
+  const handleUpdateConditionalRule = (rule: ConditionalFormattingRule) => {
+    saveStateForUndo();
+    setConditionalRulesBySheet((prev) => {
+      const existing = prev[activeSheet.id] || [];
+      const idx = existing.findIndex((r) => r.id === rule.id);
+      if (idx >= 0) {
+        const copy = [...existing];
+        copy[idx] = rule;
+        return { ...prev, [activeSheet.id]: copy };
+      }
+      return { ...prev, [activeSheet.id]: [...existing, rule] };
+    });
+  };
+
+  const handleDeleteConditionalRule = (ruleId: string) => {
+    saveStateForUndo();
+    setConditionalRulesBySheet((prev) => {
+      const existing = prev[activeSheet.id] || [];
+      return { ...prev, [activeSheet.id]: existing.filter((r) => r.id !== ruleId) };
+    });
+    showToast('Aturan format bersyarat berhasil dihapus.', 'success');
+  };
+
+  const handleResetConditionalRules = () => {
+    saveStateForUndo();
+    setConditionalRulesBySheet((prev) => ({
+      ...prev,
+      [activeSheet.id]: getDefaultConditionalRules(activeSheet.id),
+    }));
+    showToast('Format bersyarat telah direset ke rekomendasi bawaan sheet.', 'success');
+  };
+
   // Grid Cell Operations
   const handleUpdateCell = (rowId: string, columnKey: string, newValue: any) => {
     const curSheet = sheets.find((s) => s.id === activeSheet.id);
@@ -591,6 +646,15 @@ export default function App() {
         onClearAllFilters={handleClearAllFilters}
         totalRowCount={activeSheet.data.length}
         filteredRowCount={processedRows.length}
+        conditionalRules={currentConditionalRules}
+        onOpenConditionalFormatting={() => setShowConditionalModal(true)}
+        onToggleConditionalRule={(ruleId) => {
+          const target = currentConditionalRules.find((r) => r.id === ruleId);
+          if (target) {
+            handleUpdateConditionalRule({ ...target, enabled: !target.enabled });
+          }
+        }}
+        onRemoveConditionalRule={handleDeleteConditionalRule}
       />
 
       {/* Main View Area */}
@@ -615,6 +679,7 @@ export default function App() {
             canRedo={redoStack.length > 0}
             onUndo={handleUndo}
             onRedo={handleRedo}
+            conditionalRules={currentConditionalRules}
           />
         )}
 
@@ -645,6 +710,18 @@ export default function App() {
           />
         )}
       </main>
+
+      {/* Conditional Formatting Modal */}
+      <ConditionalFormattingModal
+        sheet={activeSheet}
+        isOpen={showConditionalModal}
+        onClose={() => setShowConditionalModal(false)}
+        rules={currentConditionalRules}
+        onAddRule={handleAddConditionalRule}
+        onUpdateRule={handleUpdateConditionalRule}
+        onDeleteRule={handleDeleteConditionalRule}
+        onResetRules={handleResetConditionalRules}
+      />
 
       {/* Floating Notification Toast */}
       {toast && (

@@ -1,4 +1,5 @@
 import { ColumnDef, RowData, Sheet } from '../types/spreadsheet';
+import { parseNumericValue } from './filterEngine';
 
 /**
  * Convert 0-indexed column number to Excel-style letter (0 -> A, 25 -> Z, 26 -> AA)
@@ -449,8 +450,12 @@ export class FormulaEngine {
    */
   private applyBinaryOp(op: string, a: any, b: any): any {
     // Unpack array if range was passed directly to arithmetic
-    const numA = Array.isArray(a) ? Number(a[0] || 0) : (isNaN(Number(a)) ? 0 : Number(a));
-    const numB = Array.isArray(b) ? Number(b[0] || 0) : (isNaN(Number(b)) ? 0 : Number(b));
+    const numA = Array.isArray(a)
+      ? parseNumericValue(a[0]) || 0
+      : parseNumericValue(a) || 0;
+    const numB = Array.isArray(b)
+      ? parseNumericValue(b[0]) || 0
+      : parseNumericValue(b) || 0;
 
     switch (op) {
       case '+':
@@ -493,7 +498,7 @@ export class FormulaEngine {
 
     switch (func) {
       case 'SUM': {
-        const numbers = items.map(Number).filter((n) => !isNaN(n));
+        const numbers = items.map(parseNumericValue).filter((n) => !isNaN(n));
         const sum = numbers.reduce((acc, curr) => acc + curr, 0);
         stack.push(sum);
         break;
@@ -501,7 +506,7 @@ export class FormulaEngine {
 
       case 'AVG':
       case 'AVERAGE': {
-        const numbers = items.map(Number).filter((n) => !isNaN(n));
+        const numbers = items.map(parseNumericValue).filter((n) => !isNaN(n));
         if (numbers.length === 0) {
           stack.push(0);
         } else {
@@ -513,7 +518,7 @@ export class FormulaEngine {
 
       case 'COUNT': {
         const count = items.filter(
-          (v) => v !== null && v !== undefined && v !== '' && !isNaN(Number(v))
+          (v) => v !== null && v !== undefined && v !== '' && !isNaN(parseNumericValue(v))
         ).length;
         stack.push(count);
         break;
@@ -527,28 +532,28 @@ export class FormulaEngine {
       }
 
       case 'MIN': {
-        const numbers = items.map(Number).filter((n) => !isNaN(n));
+        const numbers = items.map(parseNumericValue).filter((n) => !isNaN(n));
         stack.push(numbers.length > 0 ? Math.min(...numbers) : 0);
         break;
       }
 
       case 'MAX': {
-        const numbers = items.map(Number).filter((n) => !isNaN(n));
+        const numbers = items.map(parseNumericValue).filter((n) => !isNaN(n));
         stack.push(numbers.length > 0 ? Math.max(...numbers) : 0);
         break;
       }
 
       case 'ROUND': {
         // ROUND requires two args: number and decimals
-        const decimals = Number(rawArg || 0);
-        const targetNum = Number(stack.pop() || 0);
+        const decimals = parseNumericValue(rawArg) || 0;
+        const targetNum = parseNumericValue(stack.pop()) || 0;
         const factor = Math.pow(10, decimals);
         stack.push(Math.round(targetNum * factor) / factor);
         break;
       }
 
       case 'ABS': {
-        const val = Number(rawArg || 0);
+        const val = parseNumericValue(rawArg) || 0;
         stack.push(Math.abs(val));
         break;
       }

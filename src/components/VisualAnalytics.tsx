@@ -24,6 +24,7 @@ import {
   RowData,
   Sheet
 } from '../types/spreadsheet';
+import { parseNumericValue } from '../utils/filterEngine';
 
 interface VisualAnalyticsProps {
   sheet: Sheet;
@@ -114,7 +115,8 @@ export const VisualAnalytics: React.FC<VisualAnalyticsProps> = ({
       const keyStr = String(xVal);
 
       const yRaw = row[config.yAxisColumn];
-      const yVal = Number(yRaw) || (config.aggregation === 'count' ? 1 : 0);
+      const parsed = parseNumericValue(yRaw);
+      const yVal = !isNaN(parsed) ? parsed : config.aggregation === 'count' ? 1 : 0;
 
       if (!groupMap.has(keyStr)) {
         groupMap.set(keyStr, []);
@@ -170,7 +172,7 @@ export const VisualAnalytics: React.FC<VisualAnalyticsProps> = ({
     if (filteredRows.length === 0) return null;
     const yCol = sheet.columns.find((c) => c.key === config.yAxisColumn);
     const nums = filteredRows
-      .map((r) => Number(r[config.yAxisColumn]))
+      .map((r) => parseNumericValue(r[config.yAxisColumn]))
       .filter((n) => !isNaN(n));
 
     const total = nums.reduce((a, b) => a + b, 0);
@@ -201,6 +203,9 @@ export const VisualAnalytics: React.FC<VisualAnalyticsProps> = ({
 
   // Format metric value helper
   const formatMetric = (val: number) => {
+    if (isNaN(val) || val === null || val === undefined) {
+      return '0';
+    }
     const yCol = sheet.columns.find((c) => c.key === config.yAxisColumn);
     if (config.aggregation === 'count') {
       return `${val.toLocaleString('id-ID')} baris`;
@@ -1235,8 +1240,9 @@ export const VisualAnalytics: React.FC<VisualAnalyticsProps> = ({
                 <line x1="50" y1="20" x2="50" y2="260" stroke="#cbd5e1" strokeWidth="1" />
                 <line x1="50" y1="260" x2="780" y2="260" stroke="#cbd5e1" strokeWidth="1" />
                 {filteredRows.slice(0, 50).map((row, idx) => {
-                  const xVal = Number(row[config.xAxisColumn]) || idx * 10;
-                  const yVal = Number(row[config.yAxisColumn]) || 0;
+                  const xParsed = parseNumericValue(row[config.xAxisColumn]);
+                  const yParsed = parseNumericValue(row[config.yAxisColumn]);
+                  const yVal = !isNaN(yParsed) ? yParsed : 0;
                   const cx = 60 + (idx % 25) * 28;
                   const cy = 250 - Math.min(220, (yVal / maxValue) * 220);
                   const color = paletteColors[idx % paletteColors.length];

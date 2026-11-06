@@ -23,15 +23,23 @@ import {
   FunctionSquare,
   AlertTriangle,
   Undo2,
-  Redo2
+  Redo2,
+  Sparkles
 } from 'lucide-react';
+import { FormulaAIAssistantModal } from './FormulaAIAssistantModal';
 import {
   ColumnDef,
   ColumnType,
   RowData,
   Sheet,
-  SortConfig
+  SortConfig,
+  ConditionalFormattingRule
 } from '../types/spreadsheet';
+import {
+  calculateColumnStatistics,
+  evaluateCellConditionalFormat,
+  ColumnStatistics
+} from '../utils/conditionalFormatEngine';
 import {
   formatCellValue,
   getCategoryBadgeStyle
@@ -78,6 +86,7 @@ interface SpreadsheetGridProps {
   canRedo?: boolean;
   onUndo?: () => void;
   onRedo?: () => void;
+  conditionalRules?: ConditionalFormattingRule[];
 }
 
 export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
@@ -96,10 +105,23 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
   canRedo = false,
   onUndo,
   onRedo,
+  conditionalRules = [],
 }) => {
   // Formula Engine memoized instance and evaluated cells lookup
   const formulaEngine = useMemo(() => new FormulaEngine(sheet), [sheet]);
   const evaluatedMap = useMemo(() => formulaEngine.evaluateAll(), [formulaEngine]);
+
+  // Column statistics for conditional formatting
+  const columnStatsMap = useMemo(() => {
+    const map = new Map<string, ColumnStatistics>();
+    if (!conditionalRules || conditionalRules.length === 0) return map;
+
+    const relevantCols = new Set(conditionalRules.filter((r) => r.enabled).map((r) => r.columnKey));
+    relevantCols.forEach((colKey) => {
+      map.set(colKey, calculateColumnStatistics(sheet.data, colKey, evaluatedMap));
+    });
+    return map;
+  }, [sheet.data, conditionalRules, evaluatedMap]);
 
   // Data Validation layer: evaluates rules per column on all cells
   const validationErrors = useMemo(() => validateSheet(sheet), [sheet]);
@@ -134,6 +156,8 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
 
   // Formula documentation modal state
   const [showFormulaHelp, setShowFormulaHelp] = useState(false);
+  // Formula AI Assistant modal state
+  const [showAIAssistant, setShowAIAssistant] = useState(false);
 
   // Selected rows (checkboxes)
   const [selectedRowIds, setSelectedRowIds] = useState<string[]>([]);
@@ -397,6 +421,28 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
     onUpdateCell(selectedCell.rowId, selectedCell.colKey, template);
   };
 
+  const handleApplyAIFormula = (formula: string, applyToEntireColumn = false) => {
+    if (!selectedCell) {
+      const firstCol = visibleColumns[0]?.key || sheet.columns[0]?.key;
+      const firstRow = sheet.data[0]?._id;
+      if (firstCol && firstRow) {
+        onUpdateCell(firstRow, firstCol, formula);
+        setFormulaBarValue(formula);
+      }
+      return;
+    }
+
+    if (applyToEntireColumn) {
+      sheet.data.forEach((r) => {
+        onUpdateCell(r._id, selectedCell.colKey, formula);
+      });
+      setFormulaBarValue(formula);
+    } else {
+      onUpdateCell(selectedCell.rowId, selectedCell.colKey, formula);
+      setFormulaBarValue(formula);
+    }
+  };
+
   const openValidationModal = (colKey?: string) => {
     const targetKey = colKey || selectedCell?.colKey || visibleColumns[0]?.key || sheet.columns[0]?.key || '';
     setValidationColKey(targetKey);
@@ -637,6 +683,15 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
           </div>
 
           <button
+            onClick={() => setShowAIAssistant(true)}
+            className="flex items-center gap-1.5 px-3 py-1 text-[11px] font-semibold text-white bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 rounded-md transition-all shadow-xs"
+            title="Formula AI Assistant: rancang rumus otomatis dengan instruksi bahasa alami"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
+            <span>Formula AI Assistant</span>
+          </button>
+
+          <button
             onClick={() => setShowFormulaHelp(true)}
             className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-md transition-colors shadow-2xs"
             title="Lihat panduan sintaks rumus spreadsheet"
@@ -824,7 +879,15 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
                       const isEditing =
                         editingCell?.rowId === row._id && editingCell?.colKey === col.key;
                       const rawVal = row[col.key];
+                      const evalVal = isFormula(rawVal) ? evaluatedMap.get(`${row._id}:${col.key}`) : rawVal;
                       const cellError = validationErrors.get(`${row._id}:${col.key}`);
+                      const condFormat = evaluateCellConditionalFormat(
+                        evalVal,
+                        col.key,
+                        conditionalRules,
+                        columnStatsMap.get(col.key),
+                        col
+                      );
 
                       return (
                         <td
@@ -843,8 +906,17 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
                               ? `⚠️ Validasi Gagal: ${cellError.message}`
                               : isFormula(rawVal)
                               ? `Rumus: ${rawVal}`
+                              : condFormat?.ruleName
+                              ? `${condFormat.ruleName}`
                               : undefined
                           }
+                          style={{
+                            backgroundColor:
+                              !isCellActive && !cellError && condFormat?.backgroundColor
+                                ? condFormat.backgroundColor
+                                : undefined,
+                            color: !cellError && condFormat?.textColor ? condFormat.textColor : undefined,
+                          }}
                           className={`relative group/cell px-3 py-1.5 border-r border-slate-200 truncate font-mono text-xs ${
                             col.type === 'number' || col.type === 'currency' || col.type === 'percentage'
                               ? 'text-right tabular-nums'
@@ -859,6 +931,17 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
                               : ''
                           }`}
                         >
+                          {/* Data Bar Background Fill */}
+                          {condFormat?.dataBar && (
+                            <div
+                              className="absolute inset-y-0 left-0 pointer-events-none rounded-xs transition-all duration-300"
+                              style={{
+                                width: `${condFormat.dataBar.widthPercent}%`,
+                                backgroundColor: condFormat.dataBar.color,
+                              }}
+                            />
+                          )}
+
                           {/* Subtle red corner notch for invalid cells */}
                           {cellError && (
                             <div
@@ -933,12 +1016,26 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
 
                               return (
                                 <div
-                                  className="flex items-center justify-between gap-1 group/fcell"
+                                  className="flex items-center justify-between gap-1 group/fcell relative z-10"
                                   title={`Rumus: ${rawVal}`}
                                 >
-                                  <span className="font-semibold text-slate-900 truncate">
-                                    {formatCellValue(evalVal, col.type, col.currencyCode)}
-                                  </span>
+                                  <div className="flex items-center gap-1.5 min-w-0 truncate">
+                                    {condFormat?.icon && (
+                                      <span
+                                        className="shrink-0 text-xs select-none"
+                                        title={condFormat.icon.label}
+                                      >
+                                        {condFormat.icon.symbol}
+                                      </span>
+                                    )}
+                                    <span
+                                      className={`truncate ${
+                                        condFormat?.fontWeight === 'bold' ? 'font-bold' : 'font-semibold text-slate-900'
+                                      }`}
+                                    >
+                                      {formatCellValue(evalVal, col.type, col.currencyCode)}
+                                    </span>
+                                  </div>
                                   <span
                                     className="text-[9px] text-indigo-500 font-serif italic select-none font-bold opacity-60 group-hover/fcell:opacity-100 shrink-0 ml-1"
                                     title={`Kalkulasi rumus: ${rawVal}`}
@@ -957,17 +1054,37 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
                                   color: col.categoryColors[rawVal],
                                   borderColor: `${col.categoryColors[rawVal]}40`,
                                 }}
-                                className="inline-block px-2 py-0.5 rounded text-[11px] font-semibold border"
+                                className="inline-block px-2 py-0.5 rounded text-[11px] font-semibold border relative z-10"
                               >
                                 {String(rawVal)}
                               </span>
                             ) : (
-                              <span>{String(rawVal || '—')}</span>
+                              <span className="relative z-10">{String(rawVal || '—')}</span>
                             )
                           ) : (
-                            <span className="text-slate-800">
-                              {formatCellValue(rawVal, col.type, col.currencyCode)}
-                            </span>
+                            <div
+                              className={`flex items-center gap-1.5 relative z-10 min-w-0 ${
+                                col.type === 'number' || col.type === 'currency' || col.type === 'percentage'
+                                  ? 'justify-end'
+                                  : 'justify-start'
+                              }`}
+                            >
+                              {condFormat?.icon && (
+                                <span
+                                  className="shrink-0 text-xs select-none"
+                                  title={condFormat.icon.label}
+                                >
+                                  {condFormat.icon.symbol}
+                                </span>
+                              )}
+                              <span
+                                className={`truncate ${
+                                  condFormat?.fontWeight === 'bold' ? 'font-bold' : 'text-slate-800'
+                                }`}
+                              >
+                                {formatCellValue(rawVal, col.type, col.currencyCode)}
+                              </span>
+                            </div>
                           )}
                         </td>
                       );
@@ -1415,6 +1532,15 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
           activeToken={autocompleteContext?.activeToken || ''}
         />
       )}
+
+      {/* Formula AI Assistant Modal */}
+      <FormulaAIAssistantModal
+        sheet={sheet}
+        selectedCell={selectedCell}
+        isOpen={showAIAssistant}
+        onClose={() => setShowAIAssistant(false)}
+        onApplyFormula={handleApplyAIFormula}
+      />
     </div>
   );
 };

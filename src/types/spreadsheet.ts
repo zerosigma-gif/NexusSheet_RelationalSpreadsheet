@@ -151,3 +151,55 @@ export interface RelationalJoinConfig {
     alias: string;
   }[];
 }
+
+export type ConditionalFormatType = 'color_scale' | 'icon_set' | 'data_bar' | 'single_color';
+
+export type ColorScalePreset =
+  | 'green_yellow_red'
+  | 'red_yellow_green'
+  | 'emerald_gradient'
+  | 'indigo_gradient'
+  | 'amber_gradient'
+  | 'blue_white_red';
+
+export type IconSetType =
+  | 'traffic_lights'
+  | 'trend_arrows'
+  | 'shapes'
+  | 'stars'
+  | 'status'
+  | 'flags';
+
+export type DataBarColor = 'emerald' | 'indigo' | 'amber' | 'blue' | 'rose';
+
+export interface ConditionalFormattingRule {
+  id: string;
+  name?: string;
+  enabled: boolean;
+  columnKey: string;
+  type: ConditionalFormatType;
+  colorScale?: {
+    preset: ColorScalePreset;
+    minColor?: string;
+    midColor?: string;
+    maxColor?: string;
+  };
+  iconSet?: {
+    type: IconSetType;
+    reverseOrder?: boolean;
+    showValueOnly?: boolean;
+    showIconOnly?: boolean;
+  };
+  dataBar?: {
+    color: DataBarColor;
+    showValue: boolean;
+  };
+  singleColor?: {
+    operator: FilterOperator;
+    value: any;
+    secondValue?: any;
+    bgColor: string;
+    textColor: string;
+    bold?: boolean;
+  };
+}
