@@ -23,10 +23,8 @@ import {
   FunctionSquare,
   AlertTriangle,
   Undo2,
-  Redo2,
-  Sparkles
+  Redo2
 } from 'lucide-react';
-import { FormulaAIAssistantModal } from './FormulaAIAssistantModal';
 import {
   ColumnDef,
   ColumnType,
@@ -156,8 +154,6 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
 
   // Formula documentation modal state
   const [showFormulaHelp, setShowFormulaHelp] = useState(false);
-  // Formula AI Assistant modal state
-  const [showAIAssistant, setShowAIAssistant] = useState(false);
 
   // Selected rows (checkboxes)
   const [selectedRowIds, setSelectedRowIds] = useState<string[]>([]);
@@ -421,28 +417,6 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
     onUpdateCell(selectedCell.rowId, selectedCell.colKey, template);
   };
 
-  const handleApplyAIFormula = (formula: string, applyToEntireColumn = false) => {
-    if (!selectedCell) {
-      const firstCol = visibleColumns[0]?.key || sheet.columns[0]?.key;
-      const firstRow = sheet.data[0]?._id;
-      if (firstCol && firstRow) {
-        onUpdateCell(firstRow, firstCol, formula);
-        setFormulaBarValue(formula);
-      }
-      return;
-    }
-
-    if (applyToEntireColumn) {
-      sheet.data.forEach((r) => {
-        onUpdateCell(r._id, selectedCell.colKey, formula);
-      });
-      setFormulaBarValue(formula);
-    } else {
-      onUpdateCell(selectedCell.rowId, selectedCell.colKey, formula);
-      setFormulaBarValue(formula);
-    }
-  };
-
   const openValidationModal = (colKey?: string) => {
     const targetKey = colKey || selectedCell?.colKey || visibleColumns[0]?.key || sheet.columns[0]?.key || '';
     setValidationColKey(targetKey);
@@ -681,15 +655,6 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
               QTY×PRICE
             </button>
           </div>
-
-          <button
-            onClick={() => setShowAIAssistant(true)}
-            className="flex items-center gap-1.5 px-3 py-1 text-[11px] font-semibold text-white bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 rounded-md transition-all shadow-xs"
-            title="Formula AI Assistant: rancang rumus otomatis dengan instruksi bahasa alami"
-          >
-            <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
-            <span>Formula AI Assistant</span>
-          </button>
 
           <button
             onClick={() => setShowFormulaHelp(true)}
@@ -1532,15 +1497,6 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
           activeToken={autocompleteContext?.activeToken || ''}
         />
       )}
-
-      {/* Formula AI Assistant Modal */}
-      <FormulaAIAssistantModal
-        sheet={sheet}
-        selectedCell={selectedCell}
-        isOpen={showAIAssistant}
-        onClose={() => setShowAIAssistant(false)}
-        onApplyFormula={handleApplyAIFormula}
-      />
     </div>
   );
 };
