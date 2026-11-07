@@ -124,8 +124,8 @@ export const FilterStudioView: React.FC<FilterStudioViewProps> = ({
       <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <div className="p-2 bg-amber-50 text-amber-700 rounded-lg">
-              <Filter className="w-5 h-5" />
+            <div className="p-2 bg-slate-900 text-white rounded-lg shadow-2xs">
+              <Filter className="w-5 h-5 text-slate-100" />
             </div>
             <div>
               <h2 className="text-base font-bold text-slate-900">

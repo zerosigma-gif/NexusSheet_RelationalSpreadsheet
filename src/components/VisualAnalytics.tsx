@@ -7,7 +7,7 @@ import {
   Download,
   FileImage,
   Sliders,
-  Sparkles,
+  LayoutGrid,
   Layers,
   ArrowUpDown,
   Maximize2,
@@ -477,7 +477,7 @@ export const VisualAnalytics: React.FC<VisualAnalyticsProps> = ({
               { id: 'area', label: 'Area Luas', icon: TrendingUp },
               { id: 'donut', label: 'Donut Chart', icon: PieChart },
               { id: 'pie', label: 'Pie Chart', icon: PieChart },
-              { id: 'kpi_cards', label: 'KPI Metrik', icon: Sparkles },
+              { id: 'kpi_cards', label: 'KPI Metrik', icon: LayoutGrid },
               { id: 'scatter', label: 'Korelasi Sebar', icon: ScatterChart },
               { id: 'pivot_matrix', label: 'Matriks Pivot', icon: TableProperties },
             ].map((t) => {
@@ -1403,13 +1403,13 @@ export const VisualAnalytics: React.FC<VisualAnalyticsProps> = ({
         {/* Footer Insight Box */}
         <div className="mt-4 p-3 bg-white border border-slate-200 rounded-lg flex items-center justify-between text-xs text-slate-500">
           <div className="flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-amber-500" />
+            <BarChart3 className="w-4 h-4 text-slate-500" />
             <span>
               Menampilkan <strong className="text-slate-800">{aggregatedData.length} grup</strong> dari dataset terfilter.
             </span>
           </div>
           <div className="text-[11px] font-mono text-slate-400">
-            NexusSheet Reactive Analytics Engine
+            Analisis Agregasi Data Spreadsheet
           </div>
         </div>
       </div>

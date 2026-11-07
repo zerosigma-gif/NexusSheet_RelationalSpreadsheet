@@ -5,8 +5,7 @@ import {
   X,
   RotateCcw,
   ChevronDown,
-  Palette,
-  Sparkles
+  Palette
 } from 'lucide-react';
 import { ColumnDef, FilterOperator, FilterRule, Sheet, ConditionalFormattingRule } from '../types/spreadsheet';
 
@@ -336,13 +335,13 @@ export const FilterBar: React.FC<FilterBarProps> = ({
           {onOpenConditionalFormatting && (
             <button
               onClick={onOpenConditionalFormatting}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200/80 text-slate-800 text-xs font-semibold rounded-lg transition-colors shadow-2xs whitespace-nowrap"
-              title="Kelola Aturan Format Bersyarat (Heatmap, Skala Warna, Kumpulan Ikon)"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-800 text-xs font-semibold rounded-lg border border-slate-200 transition-colors shadow-2xs whitespace-nowrap"
+              title="Kelola Aturan Format Bersyarat (Heatmap, Skala Warna, Kumpulan Indikator)"
             >
-              <Palette className="w-3.5 h-3.5 text-indigo-600" />
+              <Palette className="w-3.5 h-3.5 text-slate-600" />
               <span>Format Bersyarat</span>
               {activeRulesCount > 0 && (
-                <span className="w-4 h-4 rounded-full bg-indigo-600 text-white text-[10px] flex items-center justify-center font-bold">
+                <span className="w-4 h-4 rounded-full bg-slate-900 text-white text-[10px] flex items-center justify-center font-bold">
                   {activeRulesCount}
                 </span>
               )}
@@ -363,9 +362,9 @@ export const FilterBar: React.FC<FilterBarProps> = ({
                 onClearAllFilters();
                 onSetGlobalQuery('');
               }}
-              className="flex items-center gap-1 text-red-600 hover:text-red-700 font-medium text-[11px] hover:underline"
+              className="flex items-center gap-1 text-slate-600 hover:text-slate-900 font-medium text-[11px] hover:underline"
             >
-              <RotateCcw className="w-3 h-3" />
+              <RotateCcw className="w-3 h-3 text-slate-400" />
               <span>Reset Filter</span>
             </button>
           )}
@@ -383,7 +382,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
                 return (
                   <span
                     key={f.id}
-                    className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] bg-slate-100 text-slate-800 border border-slate-200 shadow-2xs font-medium"
+                    className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[11px] bg-white text-slate-800 border border-slate-200 shadow-2xs font-medium"
                   >
                     <span className="text-slate-500">{col?.name || f.columnKey}</span>
                     <span className="text-slate-400 font-mono text-[10px]">{getOperatorLabel(f.operator)}</span>
@@ -392,7 +391,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
                     </span>
                     <button
                       onClick={() => onRemoveFilter(f.id)}
-                      className="p-0.5 hover:bg-slate-200 rounded-full text-slate-400 hover:text-slate-600 transition-colors"
+                      className="p-0.5 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-700 transition-colors"
                     >
                       <X className="w-3 h-3" />
                     </button>
@@ -404,7 +403,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
 
           {conditionalRules && conditionalRules.filter((r) => r.enabled).length > 0 && (
             <>
-              <span className="text-[11px] font-medium text-indigo-500 ml-1">Format Bersyarat:</span>
+              <span className="text-[11px] font-medium text-slate-500 ml-1">Format Bersyarat:</span>
               {conditionalRules
                 .filter((r) => r.enabled)
                 .map((r) => {
@@ -412,23 +411,23 @@ export const FilterBar: React.FC<FilterBarProps> = ({
                   return (
                     <span
                       key={r.id}
-                      className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] bg-indigo-50/80 text-indigo-900 border border-indigo-200 shadow-2xs font-medium"
+                      className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[11px] bg-white text-slate-800 border border-slate-200 shadow-2xs font-medium"
                     >
-                      <Palette className="w-3 h-3 text-indigo-600" />
-                      <span className="text-indigo-700">{col?.name || r.columnKey}</span>
-                      <span className="text-indigo-500 font-mono text-[10px]">
+                      <Palette className="w-3 h-3 text-slate-500" />
+                      <span className="text-slate-700">{col?.name || r.columnKey}</span>
+                      <span className="text-slate-400 font-mono text-[10px]">
                         {r.type === 'color_scale'
-                          ? '🔥 Heatmap'
+                          ? 'Skala Warna'
                           : r.type === 'icon_set'
-                          ? '🚦 Ikon'
+                          ? 'Indikator'
                           : r.type === 'data_bar'
-                          ? '📊 DataBar'
-                          : '✨ Sorot'}
+                          ? 'Bilah Data'
+                          : 'Sorot Nilai'}
                       </span>
                       {onRemoveConditionalRule && (
                         <button
                           onClick={() => onRemoveConditionalRule(r.id)}
-                          className="p-0.5 hover:bg-indigo-200 rounded-full text-indigo-400 hover:text-indigo-700 transition-colors"
+                          className="p-0.5 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-700 transition-colors"
                           title="Hapus format bersyarat ini"
                         >
                           <X className="w-3 h-3" />

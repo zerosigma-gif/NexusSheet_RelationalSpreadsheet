@@ -145,6 +145,10 @@ export interface RelationalJoinConfig {
   primaryKeyColumn: string;
   foreignKeyColumn: string;
   joinType: 'inner' | 'left';
+  tertiarySheetId?: string;
+  tertiarySourceKeyColumn?: string;
+  tertiaryTargetKeyColumn?: string;
+  tertiaryJoinType?: 'inner' | 'left';
   includedColumns: {
     sheetId: string;
     columnKey: string;

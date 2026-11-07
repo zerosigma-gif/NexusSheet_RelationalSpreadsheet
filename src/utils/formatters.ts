@@ -66,16 +66,16 @@ export function formatCellValue(value: any, type: ColumnType, currencyCode = 'ID
 
 export const CATEGORY_PALETTES: Record<string, { bg: string; text: string; border: string }> = {
   'Identifikasi': { bg: 'bg-slate-50', text: 'text-slate-700', border: 'border-slate-200' },
-  'Relasi Entitas': { bg: 'bg-indigo-50', text: 'text-indigo-700', border: 'border-indigo-200' },
-  'Finansial & Volume': { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200' },
-  'Logistik & Waktu': { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200' },
-  'Status & Operasional': { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200' },
-  'Profil & Identitas': { bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-200' },
-  'Klasifikasi Pasar': { bg: 'bg-cyan-50', text: 'text-cyan-700', border: 'border-cyan-200' },
-  'Geografis': { bg: 'bg-sky-50', text: 'text-sky-700', border: 'border-sky-200' },
-  'Komersial & Biaya': { bg: 'bg-teal-50', text: 'text-teal-700', border: 'border-teal-200' },
-  'Gudang & Inventaris': { bg: 'bg-orange-50', text: 'text-orange-700', border: 'border-orange-200' },
-  'Mutu & Supplier': { bg: 'bg-rose-50', text: 'text-rose-700', border: 'border-rose-200' },
+  'Relasi Entitas': { bg: 'bg-slate-50', text: 'text-slate-700', border: 'border-slate-200' },
+  'Finansial & Volume': { bg: 'bg-slate-50', text: 'text-slate-700', border: 'border-slate-200' },
+  'Logistik & Waktu': { bg: 'bg-slate-50', text: 'text-slate-700', border: 'border-slate-200' },
+  'Status & Operasional': { bg: 'bg-slate-50', text: 'text-slate-700', border: 'border-slate-200' },
+  'Profil & Identitas': { bg: 'bg-slate-50', text: 'text-slate-700', border: 'border-slate-200' },
+  'Klasifikasi Pasar': { bg: 'bg-slate-50', text: 'text-slate-700', border: 'border-slate-200' },
+  'Geografis': { bg: 'bg-slate-50', text: 'text-slate-700', border: 'border-slate-200' },
+  'Komersial & Biaya': { bg: 'bg-slate-50', text: 'text-slate-700', border: 'border-slate-200' },
+  'Gudang & Inventaris': { bg: 'bg-slate-50', text: 'text-slate-700', border: 'border-slate-200' },
+  'Mutu & Supplier': { bg: 'bg-slate-50', text: 'text-slate-700', border: 'border-slate-200' },
   'Default': { bg: 'bg-slate-50', text: 'text-slate-700', border: 'border-slate-200' },
 };
 

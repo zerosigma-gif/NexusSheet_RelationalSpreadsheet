@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   GitFork,
   Link2,
@@ -10,11 +10,16 @@ import {
   Database,
   Plus,
   Trash2,
-  Play
+  Play,
+  Key,
+  Check,
+  FileSpreadsheet,
+  Columns,
+  Share2
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import Papa from 'papaparse';
-import { RelationalJoinConfig, Sheet } from '../types/spreadsheet';
+import { RelationalJoinConfig, Sheet, ColumnDef, RowData } from '../types/spreadsheet';
 import { executeRelationalJoin } from '../utils/filterEngine';
 
 interface RelationalExplorerProps {
@@ -25,11 +30,15 @@ interface RelationalExplorerProps {
     targetSheetId: string,
     targetColKey: string
   ) => void;
+  onSaveAsNewSheet?: (newSheet: Sheet) => void;
+  onUpdateSheetPrimaryKey?: (sheetId: string, newPkKey: string) => void;
 }
 
 export const RelationalExplorer: React.FC<RelationalExplorerProps> = ({
   sheets,
   onAddRelation,
+  onSaveAsNewSheet,
+  onUpdateSheetPrimaryKey,
 }) => {
   // Existing identified relations across sheets
   const existingRelations = useMemo(() => {
@@ -59,60 +68,143 @@ export const RelationalExplorer: React.FC<RelationalExplorerProps> = ({
     return list;
   }, [sheets]);
 
-  // Join Studio configuration state
+  // Join Mode: 2 Sheets or 3 Sheets
+  const [joinMode, setJoinMode] = useState<'two_sheets' | 'three_sheets'>(
+    sheets.length >= 3 ? 'three_sheets' : 'two_sheets'
+  );
+
+  // Participating Sheets
   const [primarySheetId, setPrimarySheetId] = useState<string>(sheets[0]?.id || '');
-  const [foreignSheetId, setForeignSheetId] = useState<string>(sheets[1]?.id || '');
-  const [primaryKeyCol, setPrimaryKeyCol] = useState<string>('CustomerID');
-  const [foreignKeyCol, setForeignKeyCol] = useState<string>('CustomerID');
+  const [foreignSheetId, setForeignSheetId] = useState<string>(sheets[1]?.id || sheets[0]?.id || '');
+  const [tertiarySheetId, setTertiarySheetId] = useState<string>(
+    sheets[2]?.id || sheets[1]?.id || sheets[0]?.id || ''
+  );
+
+  // Join Keys for Sheet 1 & Sheet 2
+  const [primaryKeyCol, setPrimaryKeyCol] = useState<string>('');
+  const [foreignKeyCol, setForeignKeyCol] = useState<string>('');
   const [joinType, setJoinType] = useState<'left' | 'inner'>('left');
 
-  // Selected columns to include in joined view
+  // Join Keys for Sheet 1 & Sheet 3 (Tertiary)
+  const [tertiarySourceKeyCol, setTertiarySourceKeyCol] = useState<string>('');
+  const [tertiaryTargetKeyCol, setTertiaryTargetKeyCol] = useState<string>('');
+  const [tertiaryJoinType, setTertiaryJoinType] = useState<'left' | 'inner'>('left');
+
+  // Selected columns to include in joined master sheet
   const [selectedColAliases, setSelectedColAliases] = useState<
     { sheetId: string; columnKey: string; alias: string }[]
   >([]);
 
   // Joined result table state
   const [joinedResult, setJoinedResult] = useState<{
-    columns: { key: string; name: string; type: string }[];
+    columns: { key: string; name: string; type: string; sourceSheetId: string; sourceColumnKey: string; currencyCode?: string }[];
     rows: Record<string, any>[];
   } | null>(null);
+
+  // Master Database Sheet Name Input
+  const [masterSheetName, setMasterSheetName] = useState<string>('Master Database Terpadu');
 
   // New Relation creator state
   const [newRelSourceSheet, setNewRelSourceSheet] = useState(sheets[0]?.id || '');
   const [newRelSourceCol, setNewRelSourceCol] = useState('');
-  const [newRelTargetSheet, setNewRelTargetSheet] = useState(sheets[1]?.id || '');
+  const [newRelTargetSheet, setNewRelTargetSheet] = useState(sheets[1]?.id || sheets[0]?.id || '');
   const [newRelTargetCol, setNewRelTargetCol] = useState('');
 
-  const primarySheet = sheets.find((s) => s.id === primarySheetId);
-  const foreignSheet = sheets.find((s) => s.id === foreignSheetId);
+  const primarySheet = useMemo(() => sheets.find((s) => s.id === primarySheetId) || sheets[0], [sheets, primarySheetId]);
+  const foreignSheet = useMemo(() => sheets.find((s) => s.id === foreignSheetId) || sheets[1] || sheets[0], [sheets, foreignSheetId]);
+  const tertiarySheet = useMemo(() => sheets.find((s) => s.id === tertiarySheetId) || sheets[2] || null, [sheets, tertiarySheetId]);
 
-  // Auto initialize selected columns when sheets change
-  const handleInitColumns = () => {
+  // Synchronize keys automatically when sheets selection changes
+  useEffect(() => {
+    if (primarySheet) {
+      if (!primarySheet.columns.some((c) => c.key === primaryKeyCol)) {
+        // Try finding a relation column or the 2nd column or first
+        const relCol = primarySheet.columns.find((c) => c.type === 'relation' || c.key.toLowerCase().includes('id'));
+        setPrimaryKeyCol(relCol?.key || primarySheet.columns[0]?.key || '');
+      }
+      if (!primarySheet.columns.some((c) => c.key === tertiarySourceKeyCol)) {
+        const tertRelCol = primarySheet.columns.filter((c) => c.type === 'relation' || c.key.toLowerCase().includes('id'))[1];
+        setTertiarySourceKeyCol(tertRelCol?.key || primarySheet.columns[1]?.key || primarySheet.columns[0]?.key || '');
+      }
+    }
+  }, [primarySheet, primaryKeyCol, tertiarySourceKeyCol]);
+
+  useEffect(() => {
+    if (foreignSheet) {
+      if (!foreignSheet.columns.some((c) => c.key === foreignKeyCol)) {
+        const pk = foreignSheet.primaryKey || foreignSheet.columns.find((c) => c.isPrimaryKey)?.key || foreignSheet.columns[0]?.key;
+        setForeignKeyCol(pk || '');
+      }
+    }
+  }, [foreignSheet, foreignKeyCol]);
+
+  useEffect(() => {
+    if (tertiarySheet) {
+      if (!tertiarySheet.columns.some((c) => c.key === tertiaryTargetKeyCol)) {
+        const pk = tertiarySheet.primaryKey || tertiarySheet.columns.find((c) => c.isPrimaryKey)?.key || tertiarySheet.columns[0]?.key;
+        setTertiaryTargetKeyCol(pk || '');
+      }
+    }
+  }, [tertiarySheet, tertiaryTargetKeyCol]);
+
+  // Synchronize selected columns when participating sheets change
+  useEffect(() => {
     if (!primarySheet || !foreignSheet) return;
 
-    const initialCols: { sheetId: string; columnKey: string; alias: string }[] = [];
+    const cols: { sheetId: string; columnKey: string; alias: string }[] = [];
 
-    // Take top 4 from primary sheet
-    primarySheet.columns.slice(0, 4).forEach((c) => {
-      initialCols.push({ sheetId: primarySheet.id, columnKey: c.key, alias: c.name });
+    // Sheet 1 columns (top 4-5)
+    primarySheet.columns.slice(0, 5).forEach((c) => {
+      cols.push({ sheetId: primarySheet.id, columnKey: c.key, alias: c.name });
     });
 
-    // Take top 3 from foreign sheet
-    foreignSheet.columns.slice(0, 3).forEach((c) => {
-      initialCols.push({ sheetId: foreignSheet.id, columnKey: c.key, alias: c.name });
-    });
+    // Sheet 2 columns (top 3)
+    foreignSheet.columns
+      .filter((c) => c.key !== foreignKeyCol)
+      .slice(0, 3)
+      .forEach((c) => {
+        cols.push({ sheetId: foreignSheet.id, columnKey: c.key, alias: c.name });
+      });
 
-    setSelectedColAliases(initialCols);
+    // Sheet 3 columns (if 3-sheet mode active)
+    if (joinMode === 'three_sheets' && tertiarySheet && tertiarySheet.id !== primarySheet.id && tertiarySheet.id !== foreignSheet.id) {
+      tertiarySheet.columns
+        .filter((c) => c.key !== tertiaryTargetKeyCol)
+        .slice(0, 3)
+        .forEach((c) => {
+          cols.push({ sheetId: tertiarySheet.id, columnKey: c.key, alias: c.name });
+        });
+    }
+
+    setSelectedColAliases(cols);
+    setMasterSheetName(
+      joinMode === 'three_sheets' && tertiarySheet
+        ? `Master Data (${primarySheet.name} + ${foreignSheet.name} + ${tertiarySheet.name})`
+        : `Master Data (${primarySheet.name} + ${foreignSheet.name})`
+    );
+  }, [primarySheet?.id, foreignSheet?.id, tertiarySheet?.id, joinMode]);
+
+  const handleToggleColumn = (sheetId: string, columnKey: string, alias: string) => {
+    setSelectedColAliases((prev) => {
+      const exists = prev.some((c) => c.sheetId === sheetId && c.columnKey === columnKey);
+      if (exists) {
+        return prev.filter((c) => !(c.sheetId === sheetId && c.columnKey === columnKey));
+      } else {
+        return [...prev, { sheetId, columnKey, alias }];
+      }
+    });
   };
 
   const handleRunJoin = () => {
     if (!primarySheet || !foreignSheet) return;
 
+    const isThreeSheet = joinMode === 'three_sheets' && tertiarySheet;
+
     const colsToUse =
       selectedColAliases.length > 0
         ? selectedColAliases
         : [
-            ...primarySheet.columns.slice(0, 3).map((c) => ({
+            ...primarySheet.columns.slice(0, 4).map((c) => ({
               sheetId: primarySheet.id,
               columnKey: c.key,
               alias: c.name,
@@ -122,21 +214,77 @@ export const RelationalExplorer: React.FC<RelationalExplorerProps> = ({
               columnKey: c.key,
               alias: c.name,
             })),
+            ...(isThreeSheet
+              ? tertiarySheet.columns.slice(0, 3).map((c) => ({
+                  sheetId: tertiarySheet.id,
+                  columnKey: c.key,
+                  alias: c.name,
+                }))
+              : []),
           ];
 
     const joinConfig: RelationalJoinConfig = {
       id: `join-${Date.now()}`,
-      title: `${primarySheet.name} × ${foreignSheet.name}`,
+      title: `${primarySheet.name} × ${foreignSheet.name}${isThreeSheet ? ' × ' + tertiarySheet.name : ''}`,
       primarySheetId,
       foreignSheetId,
       primaryKeyColumn: primaryKeyCol,
       foreignKeyColumn: foreignKeyCol,
       joinType,
+      tertiarySheetId: isThreeSheet ? tertiarySheet.id : undefined,
+      tertiarySourceKeyColumn: isThreeSheet ? tertiarySourceKeyCol : undefined,
+      tertiaryTargetKeyColumn: isThreeSheet ? tertiaryTargetKeyCol : undefined,
+      tertiaryJoinType: isThreeSheet ? tertiaryJoinType : undefined,
       includedColumns: colsToUse,
     };
 
     const res = executeRelationalJoin(sheets, joinConfig);
     setJoinedResult(res);
+  };
+
+  // Convert joined result into a true Sheet tab in NexusSheet!
+  const handleSaveAsMasterSheet = () => {
+    if (!joinedResult || !onSaveAsNewSheet) return;
+
+    const newSheetId = `sheet-master-${Date.now()}`;
+    const generatedColumns: ColumnDef[] = joinedResult.columns.map((c, idx) => {
+      const sourceS = sheets.find((s) => s.id === c.sourceSheetId);
+      const originalCol = sourceS?.columns.find((orig) => orig.key === c.sourceColumnKey);
+
+      return {
+        key: `col_${idx}_${c.sourceColumnKey}`,
+        name: c.name,
+        type: (c.type as any) || 'text',
+        category: sourceS ? `${sourceS.name}` : 'Master Join',
+        summary: originalCol ? originalCol.summary : 'none',
+        width: originalCol?.width || (c.type === 'currency' ? 160 : 140),
+        currencyCode: c.currencyCode,
+        visible: true,
+        isPrimaryKey: idx === 0,
+      };
+    });
+
+    const generatedData: RowData[] = joinedResult.rows.map((r, rIdx) => {
+      const rowObj: Record<string, any> = { _id: `master-${newSheetId}-${rIdx}` };
+      joinedResult.columns.forEach((c, idx) => {
+        const cleanColKey = `col_${idx}_${c.sourceColumnKey}`;
+        rowObj[cleanColKey] = r[c.key];
+      });
+      return rowObj as RowData;
+    });
+
+    const newSheet: Sheet = {
+      id: newSheetId,
+      name: masterSheetName.trim() || `Master Database (${joinMode === 'three_sheets' ? '3 Sheet' : '2 Sheet'})`,
+      description: `Master consolidated database hasil penggabungan ${primarySheet?.name} + ${foreignSheet?.name}${
+        joinMode === 'three_sheets' && tertiarySheet ? ' + ' + tertiarySheet.name : ''
+      }`,
+      primaryKey: generatedColumns[0]?.key,
+      columns: generatedColumns,
+      data: generatedData,
+    };
+
+    onSaveAsNewSheet(newSheet);
   };
 
   const handleExportJoinedExcel = () => {
@@ -150,8 +298,8 @@ export const RelationalExplorer: React.FC<RelationalExplorerProps> = ({
       return obj;
     });
     const ws = XLSX.utils.json_to_sheet(cleanRows);
-    XLSX.utils.book_append_sheet(wb, ws, 'Relational_Join');
-    XLSX.writeFile(wb, `NexusSheet_Relational_Join_${Date.now()}.xlsx`);
+    XLSX.utils.book_append_sheet(wb, ws, 'Master_Database');
+    XLSX.writeFile(wb, `${masterSheetName.replace(/\s+/g, '_')}_${Date.now()}.xlsx`);
   };
 
   const handleExportJoinedCsv = () => {
@@ -168,52 +316,68 @@ export const RelationalExplorer: React.FC<RelationalExplorerProps> = ({
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `NexusSheet_Relational_Join_${Date.now()}.csv`;
+    link.download = `${masterSheetName.replace(/\s+/g, '_')}_${Date.now()}.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
+  const handleCreateNewRelation = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newRelSourceSheet || !newRelSourceCol || !newRelTargetSheet || !newRelTargetCol) return;
+    onAddRelation(newRelSourceSheet, newRelSourceCol, newRelTargetSheet, newRelTargetCol);
+    setNewRelSourceCol('');
+    setNewRelTargetCol('');
+  };
+
   return (
     <div className="flex-1 bg-slate-50 p-6 overflow-y-auto space-y-8">
       {/* 1. Header Banner */}
-      <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <div className="p-2 bg-emerald-50 text-emerald-700 rounded-lg">
-              <Database className="w-5 h-5" />
-            </div>
-            <div>
-              <h2 className="text-base font-bold text-slate-900">
-                Arsitektur Relasional Antar-Sheet & Join Studio
+      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex items-center gap-3.5">
+          <div className="p-2.5 bg-slate-900 text-white rounded-lg shadow-2xs shrink-0">
+            <Database className="w-5 h-5 text-slate-100" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-base font-bold text-slate-900 tracking-tight">
+                Studio Relasional & Multi-Sheet Join (Master Database Builder)
               </h2>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Hubungkan foreign key antar lembar kerja, telusuri diagram ER relasi, dan eksekusi penggabungan tabel (Join Query)
-              </p>
+              <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-700 border border-slate-200">
+                Mendukung 2 & 3 Sheet
+              </span>
             </div>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Setiap sheet memiliki Primary Key unik. Hubungkan kunci antar-sheet dan gabungkan lembar kerja menjadi satu Sheet Master Database baru yang langsung aktif di tab spreadsheet.
+            </p>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
-          <div className="text-xs text-slate-500 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-lg font-medium">
-            <span className="font-bold text-indigo-600">{existingRelations.length}</span> Relasi Terdeteksi
+          <div className="text-xs text-slate-600 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-lg font-medium">
+            <span className="font-bold text-slate-900 font-mono text-xs">{sheets.length}</span> Sheet Terbaca ·{' '}
+            <span className="font-bold text-slate-900 font-mono text-xs">{existingRelations.length}</span> Relasi Aktif
           </div>
         </div>
       </div>
 
-      {/* 2. Visual Entity-Relationship (ER) Diagram Cards */}
+      {/* 2. Visual Entity-Relationship (ER) Diagram Cards & Primary Key Manager */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
             <GitFork className="w-4 h-4 text-slate-700" />
-            <span>Skema Diagram Relasi Entitas (ER Model)</span>
+            <span>Skema Diagram Relasi Entitas & Primary Key per Sheet</span>
           </h3>
+          <span className="text-[11px] text-slate-400">
+            Setiap sheet memiliki Primary Key sendiri yang menjadi acuan penggabungan data.
+          </span>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-          {sheets.map((s) => {
+          {sheets.map((s, idx) => {
             const relationsOut = s.columns.filter((c) => c.type === 'relation');
-            const primaryKeyCol = s.columns.find((c) => c.isPrimaryKey || c.key === s.primaryKey);
+            const currentPk = s.primaryKey || s.columns.find((c) => c.isPrimaryKey)?.key || s.columns[0]?.key;
+            const primaryKeyCol = s.columns.find((c) => c.key === currentPk);
 
             return (
               <div
@@ -224,28 +388,56 @@ export const RelationalExplorer: React.FC<RelationalExplorerProps> = ({
                   <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                     <div className="flex items-center gap-2">
                       <Table className="w-4 h-4 text-emerald-600" />
-                      <span className="font-bold text-slate-900 text-sm">{s.name}</span>
+                      <div>
+                        <span className="font-bold text-slate-900 text-sm block">{s.name}</span>
+                        <span className="text-[10px] text-slate-400 font-mono">ID: {s.id}</span>
+                      </div>
                     </div>
-                    <span className="text-[11px] font-mono text-slate-400 bg-slate-50 px-2 py-0.5 rounded">
+                    <span className="text-[11px] font-mono text-slate-500 bg-slate-100 px-2 py-0.5 rounded font-semibold">
                       {s.data.length} records
                     </span>
                   </div>
 
-                  <div className="py-3 space-y-1 text-xs">
-                    {/* Primary Key */}
-                    {primaryKeyCol && (
-                      <div className="flex items-center justify-between p-1.5 bg-amber-50/60 border border-amber-200/60 rounded text-amber-900 font-mono text-[11px]">
-                        <span className="font-semibold">{primaryKeyCol.name}</span>
-                        <span className="text-[10px] bg-amber-200 text-amber-800 font-bold px-1 rounded">
-                          PRIMARY KEY
+                  <div className="py-3 space-y-2 text-xs">
+                    {/* Primary Key Config & Badge */}
+                    <div className="p-2.5 bg-amber-50/70 border border-amber-200/80 rounded-lg space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-amber-800 flex items-center gap-1">
+                          <Key className="w-3 h-3 text-amber-600" />
+                          <span>Primary Key Terpilih</span>
+                        </span>
+                        <span className="text-[9px] bg-amber-200 text-amber-900 font-bold px-1.5 py-0.2 rounded font-mono">
+                          PK WAJIB
                         </span>
                       </div>
-                    )}
+
+                      {onUpdateSheetPrimaryKey ? (
+                        <div className="pt-0.5">
+                          <select
+                            value={currentPk}
+                            onChange={(e) => onUpdateSheetPrimaryKey(s.id, e.target.value)}
+                            className="w-full text-xs font-mono font-bold text-amber-950 bg-white border border-amber-300 rounded px-2 py-1 focus:ring-1 focus:ring-amber-500"
+                            title="Ubah kolom primary key untuk sheet ini"
+                          >
+                            {s.columns.map((col) => (
+                              <option key={col.key} value={col.key}>
+                                {col.name} ({col.key})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      ) : (
+                        <div className="font-mono font-bold text-amber-950 text-xs">
+                          {primaryKeyCol?.name || currentPk}
+                        </div>
+                      )}
+                    </div>
 
                     {/* Columns preview */}
                     <div className="space-y-1 pt-1 max-h-40 overflow-y-auto">
+                      <div className="text-[10px] uppercase font-bold text-slate-400 pb-0.5">Kolom Tersedia:</div>
                       {s.columns
-                        .filter((c) => !c.isPrimaryKey && c.key !== s.primaryKey)
+                        .filter((c) => c.key !== currentPk)
                         .map((c) => (
                           <div
                             key={c.key}
@@ -256,9 +448,9 @@ export const RelationalExplorer: React.FC<RelationalExplorerProps> = ({
                             }`}
                           >
                             <span className="truncate">{c.name}</span>
-                            <div className="flex items-center gap-1">
+                            <div className="flex items-center gap-1 shrink-0">
                               {c.type === 'relation' ? (
-                                <span className="flex items-center gap-0.5 text-[10px] text-indigo-600">
+                                <span className="flex items-center gap-0.5 text-[10px] text-indigo-600 font-mono font-bold">
                                   <Link2 className="w-3 h-3" />
                                   <span>FK</span>
                                 </span>
@@ -285,176 +477,484 @@ export const RelationalExplorer: React.FC<RelationalExplorerProps> = ({
         </div>
       </div>
 
-      {/* 3. Interactive Cross-Sheet Join Query Builder */}
-      <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs space-y-6">
-        <div>
-          <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-            <Layers className="w-4 h-4 text-emerald-600" />
-            <span>Studio Penggabungan Tabel (Relational Cross-Sheet JOIN)</span>
-          </h3>
-          <p className="text-xs text-slate-500 mt-1">
-            Gabungkan lembar kerja utama (Primary Sheet) dengan data dari lembar kerja kedua (Foreign Sheet) menjadi satu tabel terpadu.
-          </p>
+      {/* 3. Interactive Multi-Sheet Join Studio (Master Database Builder) */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+          <div>
+            <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+              <Layers className="w-5 h-5 text-indigo-600" />
+              <span>Studio Penggabungan Multi-Sheet (Cross-Sheet JOIN Studio)</span>
+            </h3>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Gabungkan 2 atau 3 lembar kerja berbeda dengan relasi kunci (Left Join / Inner Join) menjadi satu sheet master database terpadu.
+            </p>
+          </div>
+
+          {/* Join Mode Selector: 2 Sheets vs 3 Sheets */}
+          <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl shrink-0">
+            <button
+              type="button"
+              onClick={() => setJoinMode('two_sheets')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                joinMode === 'two_sheets'
+                  ? 'bg-white text-slate-900 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Mode 2 Sheet
+            </button>
+            <button
+              type="button"
+              onClick={() => setJoinMode('three_sheets')}
+              disabled={sheets.length < 3}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                joinMode === 'three_sheets'
+                  ? 'bg-white text-slate-900 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900 disabled:opacity-40'
+              }`}
+              title={sheets.length < 3 ? 'Membutuhkan minimal 3 sheet aktif' : 'Gabungkan 3 sheet menjadi master database'}
+            >
+              Mode 3 Sheet (Master Terpadu)
+            </button>
+          </div>
         </div>
 
         {/* Join Configuration Parameters */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 p-4 bg-slate-50 border border-slate-200 rounded-lg text-xs">
-          {/* Primary Sheet */}
-          <div>
-            <label className="block font-semibold text-slate-700 mb-1">1. Lembar Kerja Utama</label>
-            <select
-              value={primarySheetId}
-              onChange={(e) => {
-                setPrimarySheetId(e.target.value);
-                const s = sheets.find((item) => item.id === e.target.value);
-                if (s) setPrimaryKeyCol(s.columns[1]?.key || s.columns[0]?.key || '');
-              }}
-              className="w-full px-2.5 py-1.5 border border-slate-200 rounded-md bg-white text-slate-800 text-xs"
-            >
-              {sheets.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
+        <div className="space-y-4">
+          <div className="text-xs font-bold uppercase tracking-wider text-slate-400">
+            Langkah 1: Konfigurasi Hubungan Kunci Antar-Sheet
           </div>
 
-          {/* Join Key from Primary */}
-          <div>
-            <label className="block font-semibold text-slate-700 mb-1">Kolom Kunci Sheet Utama</label>
-            <select
-              value={primaryKeyCol}
-              onChange={(e) => setPrimaryKeyCol(e.target.value)}
-              className="w-full px-2.5 py-1.5 border border-slate-200 rounded-md bg-white text-slate-800 text-xs font-mono"
-            >
-              {primarySheet?.columns.map((c, cIdx) => (
-                <option key={`${c.key}-${cIdx}`} value={c.key}>
-                  {c.name} ({c.key})
-                </option>
-              ))}
-            </select>
-          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            {/* Box 1: Primary Sheet (Sheet 1) */}
+            <div className="p-4 bg-indigo-50/40 border border-indigo-200 rounded-xl space-y-3">
+              <div className="flex items-center justify-between pb-2 border-b border-indigo-100">
+                <span className="font-bold text-indigo-950 text-xs flex items-center gap-1.5">
+                  <span className="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[10px]">1</span>
+                  <span>Sheet Utama (Fact/Source)</span>
+                </span>
+                <span className="text-[10px] font-mono text-indigo-700 bg-indigo-100 px-1.5 py-0.2 rounded font-semibold">
+                  Tabel Basis
+                </span>
+              </div>
 
-          {/* Foreign Sheet */}
-          <div>
-            <label className="block font-semibold text-slate-700 mb-1">2. Lembar Kerja Referensi</label>
-            <select
-              value={foreignSheetId}
-              onChange={(e) => {
-                setForeignSheetId(e.target.value);
-                const s = sheets.find((item) => item.id === e.target.value);
-                if (s) setForeignKeyCol(s.primaryKey || s.columns[0]?.key || '');
-              }}
-              className="w-full px-2.5 py-1.5 border border-slate-200 rounded-md bg-white text-slate-800 text-xs"
-            >
-              {sheets.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
-          </div>
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-700 mb-1">Pilih Sheet Utama:</label>
+                <select
+                  value={primarySheetId}
+                  onChange={(e) => setPrimarySheetId(e.target.value)}
+                  className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg bg-white text-slate-900 text-xs font-medium"
+                >
+                  {sheets.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} ({s.data.length} baris)
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-          {/* Join Key from Foreign */}
-          <div>
-            <label className="block font-semibold text-slate-700 mb-1">Kolom Kunci Sheet Referensi</label>
-            <select
-              value={foreignKeyCol}
-              onChange={(e) => setForeignKeyCol(e.target.value)}
-              className="w-full px-2.5 py-1.5 border border-slate-200 rounded-md bg-white text-slate-800 text-xs font-mono"
-            >
-              {foreignSheet?.columns.map((c, cIdx) => (
-                <option key={`${c.key}-${cIdx}`} value={c.key}>
-                  {c.name} ({c.key})
-                </option>
-              ))}
-            </select>
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                  Kolom Penghubung ke Sheet 2:
+                </label>
+                <select
+                  value={primaryKeyCol}
+                  onChange={(e) => setPrimaryKeyCol(e.target.value)}
+                  className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg bg-white text-indigo-950 text-xs font-mono font-semibold"
+                >
+                  {primarySheet?.columns.map((c) => (
+                    <option key={c.key} value={c.key}>
+                      {c.name} ({c.key}) {c.type === 'relation' ? '· [FK]' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {joinMode === 'three_sheets' && (
+                <div className="pt-2 border-t border-indigo-100">
+                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                    Kolom Penghubung ke Sheet 3:
+                  </label>
+                  <select
+                    value={tertiarySourceKeyCol}
+                    onChange={(e) => setTertiarySourceKeyCol(e.target.value)}
+                    className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg bg-white text-indigo-950 text-xs font-mono font-semibold"
+                  >
+                    {primarySheet?.columns.map((c) => (
+                      <option key={c.key} value={c.key}>
+                        {c.name} ({c.key}) {c.type === 'relation' ? '· [FK]' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+
+            {/* Box 2: Foreign Sheet (Sheet 2) */}
+            <div className="p-4 bg-emerald-50/40 border border-emerald-200 rounded-xl space-y-3">
+              <div className="flex items-center justify-between pb-2 border-b border-emerald-100">
+                <span className="font-bold text-emerald-950 text-xs flex items-center gap-1.5">
+                  <span className="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center text-[10px]">2</span>
+                  <span>Sheet Referensi Kedua</span>
+                </span>
+                <span className="text-[10px] font-mono text-emerald-700 bg-emerald-100 px-1.5 py-0.2 rounded font-semibold">
+                  Lookup Master
+                </span>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-700 mb-1">Pilih Sheet Kedua:</label>
+                <select
+                  value={foreignSheetId}
+                  onChange={(e) => setForeignSheetId(e.target.value)}
+                  className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg bg-white text-slate-900 text-xs font-medium"
+                >
+                  {sheets.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} ({s.data.length} baris)
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                  Kunci Pencocokan (Primary Key):
+                </label>
+                <select
+                  value={foreignKeyCol}
+                  onChange={(e) => setForeignKeyCol(e.target.value)}
+                  className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg bg-white text-emerald-950 text-xs font-mono font-semibold"
+                >
+                  {foreignSheet?.columns.map((c) => (
+                    <option key={c.key} value={c.key}>
+                      {c.name} ({c.key}) {c.isPrimaryKey || c.key === foreignSheet.primaryKey ? '· [PK]' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="pt-2 border-t border-emerald-100">
+                <label className="block text-[11px] font-semibold text-slate-700 mb-1">Tipe Join Sheet 1 &amp; 2:</label>
+                <div className="flex items-center gap-3 text-xs">
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="joinType"
+                      checked={joinType === 'left'}
+                      onChange={() => setJoinType('left')}
+                      className="accent-indigo-600"
+                    />
+                    <span className="font-semibold text-slate-800">LEFT JOIN</span>
+                  </label>
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="joinType"
+                      checked={joinType === 'inner'}
+                      onChange={() => setJoinType('inner')}
+                      className="accent-indigo-600"
+                    />
+                    <span className="font-semibold text-slate-800">INNER JOIN</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            {/* Box 3: Tertiary Sheet (Sheet 3) */}
+            {joinMode === 'three_sheets' ? (
+              <div className="p-4 bg-amber-50/40 border border-amber-200 rounded-xl space-y-3">
+                <div className="flex items-center justify-between pb-2 border-b border-amber-100">
+                  <span className="font-bold text-amber-950 text-xs flex items-center gap-1.5">
+                    <span className="w-5 h-5 rounded-full bg-amber-600 text-white flex items-center justify-center text-[10px]">3</span>
+                    <span>Sheet Referensi Ketiga</span>
+                  </span>
+                  <span className="text-[10px] font-mono text-amber-700 bg-amber-100 px-1.5 py-0.2 rounded font-semibold">
+                    Master Produk / Katalog
+                  </span>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">Pilih Sheet Ketiga:</label>
+                  <select
+                    value={tertiarySheetId}
+                    onChange={(e) => setTertiarySheetId(e.target.value)}
+                    className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg bg-white text-slate-900 text-xs font-medium"
+                  >
+                    {sheets.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name} ({s.data.length} baris)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                    Kunci Pencocokan (Primary Key):
+                  </label>
+                  <select
+                    value={tertiaryTargetKeyCol}
+                    onChange={(e) => setTertiaryTargetKeyCol(e.target.value)}
+                    className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg bg-white text-amber-950 text-xs font-mono font-semibold"
+                  >
+                    {tertiarySheet?.columns.map((c) => (
+                      <option key={c.key} value={c.key}>
+                        {c.name} ({c.key}) {c.isPrimaryKey || c.key === tertiarySheet.primaryKey ? '· [PK]' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="pt-2 border-t border-amber-100">
+                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">Tipe Join Sheet 1 &amp; 3:</label>
+                  <div className="flex items-center gap-3 text-xs">
+                    <label className="flex items-center gap-1.5 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="tertiaryJoinType"
+                        checked={tertiaryJoinType === 'left'}
+                        onChange={() => setTertiaryJoinType('left')}
+                        className="accent-indigo-600"
+                      />
+                      <span className="font-semibold text-slate-800">LEFT JOIN</span>
+                    </label>
+                    <label className="flex items-center gap-1.5 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="tertiaryJoinType"
+                        checked={tertiaryJoinType === 'inner'}
+                        onChange={() => setTertiaryJoinType('inner')}
+                        className="accent-indigo-600"
+                      />
+                      <span className="font-semibold text-slate-800">INNER JOIN</span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="p-5 border-2 border-dashed border-slate-200 rounded-xl flex flex-col items-center justify-center text-center text-slate-400 space-y-2">
+                <Database className="w-8 h-8 opacity-40 text-slate-400" />
+                <div className="text-xs font-semibold text-slate-600">Mode 2 Sheet Aktif</div>
+                <p className="text-[11px] text-slate-400 max-w-xs">
+                  Ingin menggabungkan 3 sheet sekaligus menjadi master database terpadu? Klik tombol <strong>Mode 3 Sheet</strong> di atas.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setJoinMode('three_sheets')}
+                  className="px-3 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-xs font-semibold transition-colors"
+                >
+                  Aktifkan Mode 3 Sheet
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Join Type and Action */}
-        <div className="flex flex-wrap items-center justify-between gap-4 pt-1">
-          <div className="flex items-center gap-3 text-xs">
-            <span className="font-semibold text-slate-700">Tipe Join:</span>
-            <label className="flex items-center gap-1.5 cursor-pointer">
-              <input
-                type="radio"
-                name="joinType"
-                checked={joinType === 'left'}
-                onChange={() => setJoinType('left')}
-                className="text-indigo-600"
-              />
-              <span className="text-slate-800">LEFT JOIN (Pertahankan semua baris Sheet Utama)</span>
-            </label>
-            <label className="flex items-center gap-1.5 cursor-pointer ml-3">
-              <input
-                type="radio"
-                name="joinType"
-                checked={joinType === 'inner'}
-                onChange={() => setJoinType('inner')}
-                className="text-indigo-600"
-              />
-              <span className="text-slate-800">INNER JOIN (Hanya baris yang cocok keduanya)</span>
-            </label>
+        {/* Step 2: Columns Selection Matrix */}
+        <div className="space-y-3 pt-2">
+          <div className="flex items-center justify-between">
+            <div className="text-xs font-bold uppercase tracking-wider text-slate-400">
+              Langkah 2: Pilih Kolom yang Dimasukkan ke Master Sheet ({selectedColAliases.length} Kolom Terpilih)
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                const allCols: { sheetId: string; columnKey: string; alias: string }[] = [];
+                primarySheet?.columns.forEach((c) => allCols.push({ sheetId: primarySheet.id, columnKey: c.key, alias: c.name }));
+                foreignSheet?.columns.forEach((c) => allCols.push({ sheetId: foreignSheet.id, columnKey: c.key, alias: c.name }));
+                if (joinMode === 'three_sheets' && tertiarySheet) {
+                  tertiarySheet.columns.forEach((c) => allCols.push({ sheetId: tertiarySheet.id, columnKey: c.key, alias: c.name }));
+                }
+                setSelectedColAliases(allCols);
+              }}
+              className="text-xs text-indigo-600 hover:text-indigo-800 font-semibold"
+            >
+              Pilih Semua Kolom
+            </button>
+          </div>
+
+          <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3 max-h-56 overflow-y-auto">
+            {/* Sheet 1 columns */}
+            <div>
+              <div className="text-[11px] font-bold text-indigo-900 mb-1.5 flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-indigo-600" />
+                <span>Kolom dari {primarySheet?.name}:</span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {primarySheet?.columns.map((c) => {
+                  const isChecked = selectedColAliases.some((col) => col.sheetId === primarySheet.id && col.columnKey === c.key);
+                  return (
+                    <button
+                      type="button"
+                      key={`${primarySheet.id}_${c.key}`}
+                      onClick={() => handleToggleColumn(primarySheet.id, c.key, c.name)}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-medium border flex items-center gap-1.5 transition-all ${
+                        isChecked
+                          ? 'bg-indigo-600 text-white border-indigo-700 shadow-2xs'
+                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      {isChecked && <Check className="w-3 h-3" />}
+                      <span>{c.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Sheet 2 columns */}
+            <div className="pt-2 border-t border-slate-200">
+              <div className="text-[11px] font-bold text-emerald-900 mb-1.5 flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-600" />
+                <span>Kolom dari {foreignSheet?.name}:</span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {foreignSheet?.columns.map((c) => {
+                  const isChecked = selectedColAliases.some((col) => col.sheetId === foreignSheet.id && col.columnKey === c.key);
+                  return (
+                    <button
+                      type="button"
+                      key={`${foreignSheet.id}_${c.key}`}
+                      onClick={() => handleToggleColumn(foreignSheet.id, c.key, c.name)}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-medium border flex items-center gap-1.5 transition-all ${
+                        isChecked
+                          ? 'bg-emerald-600 text-white border-emerald-700 shadow-2xs'
+                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      {isChecked && <Check className="w-3 h-3" />}
+                      <span>{c.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Sheet 3 columns if active */}
+            {joinMode === 'three_sheets' && tertiarySheet && (
+              <div className="pt-2 border-t border-slate-200">
+                <div className="text-[11px] font-bold text-amber-900 mb-1.5 flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-amber-600" />
+                  <span>Kolom dari {tertiarySheet.name}:</span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {tertiarySheet.columns.map((c) => {
+                    const isChecked = selectedColAliases.some((col) => col.sheetId === tertiarySheet.id && col.columnKey === c.key);
+                    return (
+                      <button
+                        type="button"
+                        key={`${tertiarySheet.id}_${c.key}`}
+                        onClick={() => handleToggleColumn(tertiarySheet.id, c.key, c.name)}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-medium border flex items-center gap-1.5 transition-all ${
+                          isChecked
+                            ? 'bg-amber-600 text-white border-amber-700 shadow-2xs'
+                            : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                        }`}
+                      >
+                        {isChecked && <Check className="w-3 h-3" />}
+                        <span>{c.name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Step 3: Run Join Button */}
+        <div className="pt-2 flex items-center justify-between border-t border-slate-100">
+          <div className="text-xs text-slate-500">
+            {joinMode === 'three_sheets'
+              ? `Menggabungkan 3 Sheet (${primarySheet?.name} × ${foreignSheet?.name} × ${tertiarySheet?.name})`
+              : `Menggabungkan 2 Sheet (${primarySheet?.name} × ${foreignSheet?.name})`}
           </div>
 
           <button
             onClick={handleRunJoin}
-            className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-lg text-xs font-semibold hover:bg-slate-800 transition-colors shadow-xs"
+            className="flex items-center gap-2 px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer"
           >
-            <Play className="w-3.5 h-3.5 fill-white" />
-            <span>Eksekusi Join & Tampilkan Hasil</span>
+            <Play className="w-4 h-4 fill-white" />
+            <span>Eksekusi Join &amp; Tampilkan Preview</span>
           </button>
         </div>
 
-        {/* Joined Table Result Preview */}
+        {/* Joined Table Result Preview & Save as Master Database Sheet */}
         {joinedResult && (
-          <div className="space-y-4 pt-4 border-t border-slate-200 animate-in fade-in">
-            <div className="flex items-center justify-between">
+          <div className="space-y-4 pt-5 border-t border-slate-200 animate-in fade-in">
+            {/* Header Result & Save as New Sheet Action */}
+            <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl flex flex-col lg:flex-row lg:items-center justify-between gap-4">
               <div>
-                <h4 className="text-xs font-bold text-slate-900">
-                  Hasil Penggabungan Relasional: {joinedResult.rows.length} Baris Data Terpadu
-                </h4>
-                <p className="text-[11px] text-slate-500">
-                  Kolom gabungan dari {primarySheet?.name} dan {foreignSheet?.name}
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-slate-700 shrink-0" />
+                  <h4 className="text-sm font-bold text-slate-900">
+                    Penggabungan Berhasil: {joinedResult.rows.length} Baris Data Terpadu
+                  </h4>
+                  <span className="px-2 py-0.5 rounded text-[10px] font-mono font-medium bg-slate-200 text-slate-800">
+                    {joinedResult.columns.length} Kolom
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 mt-1">
+                  Data telah digabung secara relasional. Simpan hasil ini menjadi <strong>Tab Sheet Baru</strong> agar langsung muncul dan bisa diolah di Spreadsheet Grid.
                 </p>
               </div>
 
-              {/* Export Buttons */}
-              <div className="flex items-center gap-2">
+              {/* Master Sheet Save Form & Button */}
+              <div className="flex flex-wrap items-center gap-2.5">
+                <input
+                  type="text"
+                  value={masterSheetName}
+                  onChange={(e) => setMasterSheetName(e.target.value)}
+                  placeholder="Nama Sheet Baru..."
+                  className="px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-semibold bg-white text-slate-900 shadow-2xs focus:ring-1 focus:ring-slate-400 min-w-56"
+                />
+
                 <button
-                  onClick={handleExportJoinedExcel}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-lg text-xs font-semibold hover:bg-emerald-100 transition-colors"
+                  onClick={handleSaveAsMasterSheet}
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-medium transition-colors shadow-2xs shrink-0 cursor-pointer"
+                  title="Simpan tabel terpadu ini menjadi tab sheet baru yang aktif di aplikasi"
                 >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>Download Excel (.xlsx)</span>
+                  <Plus className="w-4 h-4 text-white" />
+                  <span>Jadikan Sheet Tab Baru (Master Database)</span>
                 </button>
-                <button
-                  onClick={handleExportJoinedCsv}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-800 border border-blue-200 rounded-lg text-xs font-semibold hover:bg-blue-100 transition-colors"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>Download CSV</span>
-                </button>
+
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={handleExportJoinedExcel}
+                    className="p-2 bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 rounded-lg text-xs font-semibold transition-colors"
+                    title="Export ke file Excel (.xlsx)"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={handleExportJoinedCsv}
+                    className="p-2 bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 rounded-lg text-xs font-semibold transition-colors"
+                    title="Export ke file CSV"
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
             </div>
 
-            {/* Table */}
-            <div className="border border-slate-200 rounded-xl overflow-hidden max-h-80 overflow-y-auto">
+            {/* Table Preview */}
+            <div className="border border-slate-200 rounded-xl overflow-hidden max-h-80 overflow-y-auto bg-white shadow-2xs">
               <table className="w-full text-xs text-left">
-                <thead className="sticky top-0 bg-slate-100 font-semibold text-slate-700 border-b border-slate-200">
+                <thead className="sticky top-0 bg-slate-100 font-semibold text-slate-700 border-b border-slate-200 z-10">
                   <tr>
                     <th className="px-3 py-2 text-center w-10">#</th>
                     {joinedResult.columns.map((col, cIdx) => (
                       <th key={`${col.key}-${cIdx}`} className="px-3 py-2 border-r border-slate-200 whitespace-nowrap">
-                        {col.name}
+                        <span className="block font-bold">{col.name}</span>
+                        <span className="text-[9px] font-mono font-normal text-slate-400 block">{col.type}</span>
                       </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-mono text-[11px]">
                   {joinedResult.rows.map((row, idx) => (
-                    <tr key={row._id || `join-row-${idx}`} className="hover:bg-slate-50">
+                    <tr key={row._id || `join-row-${idx}`} className="hover:bg-slate-50 transition-colors">
                       <td className="px-3 py-1.5 text-center text-slate-400 font-sans">{idx + 1}</td>
                       {joinedResult.columns.map((col, cIdx) => (
                         <td key={`${col.key}-${cIdx}`} className="px-3 py-1.5 border-r border-slate-200 text-slate-800 truncate max-w-xs">
@@ -470,6 +970,94 @@ export const RelationalExplorer: React.FC<RelationalExplorerProps> = ({
             </div>
           </div>
         )}
+      </div>
+
+      {/* 4. Manual Relation Link Form */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-4">
+        <div>
+          <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+            <Plus className="w-4 h-4 text-indigo-600" />
+            <span>Konfigurasi Relasi Baru Antar-Sheet</span>
+          </h3>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Buat definisi hubungan foreign key baru antara dua lembar kerja untuk mengaktifkan tautan navigasi dan join otomatis.
+          </p>
+        </div>
+
+        <form onSubmit={handleCreateNewRelation} className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end text-xs">
+          <div>
+            <label className="block font-medium text-slate-700 mb-1">Sheet Sumber (Source)</label>
+            <select
+              value={newRelSourceSheet}
+              onChange={(e) => setNewRelSourceSheet(e.target.value)}
+              className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg bg-white text-slate-800 text-xs"
+            >
+              {sheets.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block font-medium text-slate-700 mb-1">Kolom Sumber (Foreign Key)</label>
+            <select
+              value={newRelSourceCol}
+              onChange={(e) => setNewRelSourceCol(e.target.value)}
+              required
+              className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg bg-white text-slate-800 text-xs font-mono"
+            >
+              <option value="">Pilih kolom...</option>
+              {sheets.find((s) => s.id === newRelSourceSheet)?.columns.map((c) => (
+                <option key={c.key} value={c.key}>
+                  {c.name} ({c.key})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block font-medium text-slate-700 mb-1">Sheet Tujuan (Master Target)</label>
+            <select
+              value={newRelTargetSheet}
+              onChange={(e) => setNewRelTargetSheet(e.target.value)}
+              className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg bg-white text-slate-800 text-xs"
+            >
+              {sheets.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block font-medium text-slate-700 mb-1">Kolom Tujuan (Primary Key)</label>
+            <select
+              value={newRelTargetCol}
+              onChange={(e) => setNewRelTargetCol(e.target.value)}
+              required
+              className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg bg-white text-slate-800 text-xs font-mono"
+            >
+              <option value="">Pilih kolom...</option>
+              {sheets.find((s) => s.id === newRelTargetSheet)?.columns.map((c) => (
+                <option key={c.key} value={c.key}>
+                  {c.name} ({c.key}) {c.isPrimaryKey ? '· [PK]' : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <button
+              type="submit"
+              className="w-full py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold transition-colors shadow-2xs"
+            >
+              + Simpan Relasi
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );

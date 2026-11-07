@@ -203,49 +203,49 @@ export function getIconSetResult(
     // High tier
     switch (iconType) {
       case 'traffic_lights':
-        return { symbol: '🟢', label: 'Tinggi', color: '#10b981' };
+        return { symbol: '●', label: 'Tinggi', color: '#059669' };
       case 'trend_arrows':
-        return { symbol: '▲', label: 'Naik', color: '#10b981' };
+        return { symbol: '↑', label: 'Naik', color: '#059669' };
       case 'shapes':
-        return { symbol: '🟩', label: 'Level Tinggi', color: '#10b981' };
+        return { symbol: '■', label: 'Tinggi', color: '#059669' };
       case 'stars':
-        return { symbol: '★★★', label: 'Bintang 3', color: '#f59e0b' };
+        return { symbol: '★★★', label: 'Peringkat 3', color: '#475569' };
       case 'status':
-        return { symbol: '✔', label: 'Optimal', color: '#10b981' };
+        return { symbol: '✓', label: 'Optimal', color: '#059669' };
       case 'flags':
-        return { symbol: '🚩', label: 'Prioritas Tinggi', color: '#ef4444' };
+        return { symbol: '⚑', label: 'Tinggi', color: '#334155' };
     }
   } else if (effectiveT >= 0.33) {
     // Mid tier
     switch (iconType) {
       case 'traffic_lights':
-        return { symbol: '🟡', label: 'Sedang', color: '#f59e0b' };
+        return { symbol: '●', label: 'Sedang', color: '#d97706' };
       case 'trend_arrows':
-        return { symbol: '▶', label: 'Stabil', color: '#f59e0b' };
+        return { symbol: '→', label: 'Stabil', color: '#d97706' };
       case 'shapes':
-        return { symbol: '🟨', label: 'Level Sedang', color: '#f59e0b' };
+        return { symbol: '■', label: 'Sedang', color: '#d97706' };
       case 'stars':
-        return { symbol: '★★☆', label: 'Bintang 2', color: '#f59e0b' };
+        return { symbol: '★★☆', label: 'Peringkat 2', color: '#64748b' };
       case 'status':
-        return { symbol: '⚠', label: 'Cukup', color: '#f59e0b' };
+        return { symbol: '–', label: 'Cukup', color: '#d97706' };
       case 'flags':
-        return { symbol: '🏳', label: 'Normal', color: '#94a3b8' };
+        return { symbol: '⚐', label: 'Normal', color: '#64748b' };
     }
   } else {
     // Low tier
     switch (iconType) {
       case 'traffic_lights':
-        return { symbol: '🔴', label: 'Rendah', color: '#ef4444' };
+        return { symbol: '●', label: 'Rendah', color: '#dc2626' };
       case 'trend_arrows':
-        return { symbol: '▼', label: 'Turun', color: '#ef4444' };
+        return { symbol: '↓', label: 'Turun', color: '#dc2626' };
       case 'shapes':
-        return { symbol: '🟥', label: 'Level Rendah', color: '#ef4444' };
+        return { symbol: '■', label: 'Rendah', color: '#dc2626' };
       case 'stars':
-        return { symbol: '★☆☆', label: 'Bintang 1', color: '#f59e0b' };
+        return { symbol: '★☆☆', label: 'Peringkat 1', color: '#94a3b8' };
       case 'status':
-        return { symbol: '✖', label: 'Perlu Perhatian', color: '#ef4444' };
+        return { symbol: '✕', label: 'Perhatian', color: '#dc2626' };
       case 'flags':
-        return { symbol: '🏁', label: 'Bawah', color: '#64748b' };
+        return { symbol: '⚐', label: 'Rendah', color: '#94a3b8' };
     }
   }
 }
@@ -390,8 +390,8 @@ export function getDefaultConditionalRules(sheetId: string): ConditionalFormatti
     return [
       {
         id: 'cf-heatmap-unitprice',
-        name: '🔥 Heatmap Harga Satuan (Emerald)',
-        enabled: true,
+        name: 'Heatmap Harga Satuan',
+        enabled: false,
         columnKey: 'UnitPrice',
         type: 'color_scale',
         colorScale: {
@@ -400,8 +400,8 @@ export function getDefaultConditionalRules(sheetId: string): ConditionalFormatti
       },
       {
         id: 'cf-icons-quantity',
-        name: '🚦 Indikator Volume Jumlah',
-        enabled: true,
+        name: 'Indikator Volume Jumlah',
+        enabled: false,
         columnKey: 'Quantity',
         type: 'icon_set',
         iconSet: {
@@ -411,8 +411,8 @@ export function getDefaultConditionalRules(sheetId: string): ConditionalFormatti
       },
       {
         id: 'cf-databar-total',
-        name: '📊 Data Bar Total Penjualan',
-        enabled: true,
+        name: 'Bilah Data Total Penjualan',
+        enabled: false,
         columnKey: 'TotalAmount',
         type: 'data_bar',
         dataBar: {
@@ -422,8 +422,8 @@ export function getDefaultConditionalRules(sheetId: string): ConditionalFormatti
       },
       {
         id: 'cf-lunas-highlight',
-        name: '✨ Highlight Status Lunas',
-        enabled: true,
+        name: 'Sorot Status Lunas',
+        enabled: false,
         columnKey: 'PaymentStatus',
         type: 'single_color',
         singleColor: {

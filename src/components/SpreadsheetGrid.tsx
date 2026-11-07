@@ -729,7 +729,7 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
                       {/* Top Category Badge & Validation Indicator */}
                       <div className="flex items-center justify-between gap-1">
                         <span
-                          className={`text-[9px] font-medium uppercase tracking-wider px-1 rounded border ${badgeStyle.bg} ${badgeStyle.text} ${badgeStyle.border} truncate max-w-[90px]`}
+                          className="text-[9px] font-medium uppercase tracking-wider text-slate-400 truncate max-w-[90px]"
                           title={`Kategori: ${col.category}`}
                         >
                           {col.category}
@@ -742,16 +742,16 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
                                 e.stopPropagation();
                                 openValidationModal(col.key);
                               }}
-                              className="text-[9px] bg-emerald-50 text-emerald-800 border border-emerald-200/80 font-semibold px-1 rounded flex items-center gap-0.5 hover:bg-emerald-100 transition-colors"
+                              className="text-[9px] bg-slate-100 text-slate-700 border border-slate-200 font-mono font-medium px-1 rounded flex items-center gap-0.5 hover:bg-slate-200 transition-colors"
                               title={`Validasi Aktif: ${getValidationRuleLabel(col.validation.type)} (Klik untuk atur)`}
                             >
-                              <ShieldCheck className="w-2.5 h-2.5 text-emerald-600" />
+                              <ShieldCheck className="w-2.5 h-2.5 text-slate-500" />
                               <span className="truncate max-w-[45px]">{col.validation.type}</span>
                             </button>
                           )}
                           {col.isPrimaryKey && (
                             <span
-                              className="text-[9px] bg-amber-100 text-amber-800 font-bold px-1 rounded"
+                              className="text-[9px] font-mono bg-slate-100 text-slate-800 border border-slate-200 font-bold px-1 rounded"
                               title="Primary Key Sheet"
                             >
                               PK
@@ -759,10 +759,10 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
                           )}
                           {col.type === 'relation' && (
                             <span
-                              className="text-[9px] bg-indigo-100 text-indigo-700 font-bold px-1 rounded flex items-center gap-0.5"
+                              className="text-[9px] font-mono bg-slate-100 text-slate-700 border border-slate-200 font-semibold px-1 rounded flex items-center gap-0.5"
                               title="Foreign Key Relational"
                             >
-                              <Link2 className="w-2.5 h-2.5" />
+                              <Link2 className="w-2.5 h-2.5 text-slate-500" />
                               FK
                             </span>
                           )}
@@ -1504,19 +1504,19 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
 function getTypeIcon(type: ColumnType) {
   switch (type) {
     case 'number':
-      return <Hash className="w-3 h-3 text-blue-500" />;
+      return <Hash className="w-3 h-3 text-slate-400" />;
     case 'currency':
-      return <DollarSign className="w-3 h-3 text-emerald-500" />;
+      return <DollarSign className="w-3 h-3 text-slate-400" />;
     case 'date':
-      return <Calendar className="w-3 h-3 text-amber-500" />;
+      return <Calendar className="w-3 h-3 text-slate-400" />;
     case 'category':
-      return <Layers className="w-3 h-3 text-purple-500" />;
+      return <Layers className="w-3 h-3 text-slate-400" />;
     case 'rating':
-      return <Star className="w-3 h-3 text-yellow-500 fill-yellow-500" />;
+      return <Star className="w-3 h-3 text-slate-400" />;
     case 'percentage':
-      return <Percent className="w-3 h-3 text-teal-500" />;
+      return <Percent className="w-3 h-3 text-slate-400" />;
     case 'relation':
-      return <Link2 className="w-3 h-3 text-indigo-500" />;
+      return <Link2 className="w-3 h-3 text-slate-400" />;
     default:
       return null;
   }

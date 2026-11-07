@@ -213,6 +213,9 @@ export default function App() {
     setSortConfigBySheet({});
     setGlobalQuery('');
     setSelectedCategory('ALL');
+    setConditionalRulesBySheet({
+      'sheet-orders': getDefaultConditionalRules('sheet-orders'),
+    });
     showToast('Dataset contoh relational telah direset ke setelan awal.', 'success');
   };
 
@@ -589,6 +592,35 @@ export default function App() {
     showToast('Relasi baru antar sheet berhasil dikonfigurasi.', 'success');
   };
 
+  // Convert relational join output into a brand-new master sheet tab
+  const handleSaveJoinedAsNewSheet = (newSheet: Sheet) => {
+    saveStateForUndo();
+    setSheets((prev) => [...prev, newSheet]);
+    setActiveSheetId(newSheet.id);
+    setActiveTab('spreadsheet');
+    setSelectedCategory('ALL');
+    showToast(`Sheet "${newSheet.name}" berhasil dibuat sebagai Master Database baru!`, 'success');
+  };
+
+  // Dynamically reassign or set Primary Key for any sheet
+  const handleUpdateSheetPrimaryKey = (sheetId: string, newPkKey: string) => {
+    saveStateForUndo();
+    setSheets((prev) =>
+      prev.map((s) => {
+        if (s.id !== sheetId) return s;
+        return {
+          ...s,
+          primaryKey: newPkKey,
+          columns: s.columns.map((c) => ({
+            ...c,
+            isPrimaryKey: c.key === newPkKey,
+          })),
+        };
+      })
+    );
+    showToast(`Primary Key sheet berhasil diperbarui menjadi "${newPkKey}".`, 'success');
+  };
+
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-white text-slate-800">
       {/* Top Header */}
@@ -695,6 +727,8 @@ export default function App() {
           <RelationalExplorer
             sheets={sheets}
             onAddRelation={handleAddRelation}
+            onSaveAsNewSheet={handleSaveJoinedAsNewSheet}
+            onUpdateSheetPrimaryKey={handleUpdateSheetPrimaryKey}
           />
         )}
 

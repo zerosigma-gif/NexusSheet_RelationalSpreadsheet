@@ -14,7 +14,6 @@ import {
   Eraser,
   Layers,
   ChevronDown,
-  Sparkles,
   FileSpreadsheet
 } from 'lucide-react';
 import { Sheet } from '../types/spreadsheet';
@@ -81,7 +80,7 @@ export const SheetTabs: React.FC<SheetTabsProps> = ({
               }`}
               onClick={() => !isEditing && onSelectSheet(sheet.id)}
             >
-              <Table className={`w-3.5 h-3.5 ${isActive ? 'text-emerald-600' : 'text-slate-400'}`} />
+              <Table className={`w-3.5 h-3.5 ${isActive ? 'text-slate-800' : 'text-slate-400'}`} />
 
               {isEditing ? (
                 <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
@@ -94,11 +93,11 @@ export const SheetTabs: React.FC<SheetTabsProps> = ({
                       if (e.key === 'Escape') setEditingSheetId(null);
                     }}
                     autoFocus
-                    className="px-1.5 py-0.5 text-xs border border-indigo-400 rounded bg-white text-slate-900 outline-hidden w-28 font-medium"
+                    className="px-1.5 py-0.5 text-xs border border-slate-400 rounded bg-white text-slate-900 outline-hidden w-28 font-medium"
                   />
                   <button
                     onClick={() => saveRename(sheet.id)}
-                    className="p-0.5 text-emerald-600 hover:text-emerald-700"
+                    className="p-0.5 text-slate-700 hover:text-slate-900"
                     title="Simpan nama"
                   >
                     <Check className="w-3.5 h-3.5" />
@@ -126,7 +125,7 @@ export const SheetTabs: React.FC<SheetTabsProps> = ({
                 <span>({sheet.data.length})</span>
                 {relationCount > 0 && (
                   <span
-                    className="text-indigo-600 flex items-center"
+                    className="text-slate-500 flex items-center"
                     title={`${relationCount} kolom berelasi dengan sheet lain`}
                   >
                     <Link2 className="w-3 h-3" />
@@ -308,10 +307,10 @@ export const SheetTabs: React.FC<SheetTabsProps> = ({
         <div className="relative">
           <button
             onClick={() => setShowSheetListDropdown(!showSheetListDropdown)}
-            className="flex items-center gap-1 px-2.5 py-1 text-xs text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-md font-medium transition-colors"
+            className="flex items-center gap-1 px-2.5 py-1 text-xs text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-md font-medium transition-colors shadow-2xs"
             title="Daftar semua sheet aktif"
           >
-            <Layers className="w-3.5 h-3.5 text-indigo-600" />
+            <Layers className="w-3.5 h-3.5 text-slate-500" />
             <span>Tampilkan Sheet ({sheets.length})</span>
             <ChevronDown className="w-3 h-3 text-slate-400" />
           </button>
@@ -327,7 +326,7 @@ export const SheetTabs: React.FC<SheetTabsProps> = ({
                   Daftar Lembar Kerja
                 </div>
                 <div className="max-h-56 overflow-y-auto divide-y divide-slate-100">
-                  {sheets.map((s, idx) => {
+                  {sheets.map((s) => {
                     const isCur = s.id === activeSheetId;
                     return (
                       <div
@@ -338,15 +337,15 @@ export const SheetTabs: React.FC<SheetTabsProps> = ({
                         }}
                         className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-colors ${
                           isCur
-                            ? 'bg-indigo-50/80 font-bold text-indigo-900 border border-indigo-200'
+                            ? 'bg-slate-100 font-bold text-slate-900 border border-slate-300'
                             : 'hover:bg-slate-50 text-slate-700'
                         }`}
                       >
                         <div className="flex items-center gap-2 truncate">
-                          <Table className={`w-3.5 h-3.5 shrink-0 ${isCur ? 'text-indigo-600' : 'text-slate-400'}`} />
+                          <Table className={`w-3.5 h-3.5 shrink-0 ${isCur ? 'text-slate-800' : 'text-slate-400'}`} />
                           <span className="truncate">{s.name}</span>
                         </div>
-                        <span className="text-[10px] font-mono text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded shrink-0">
+                        <span className="text-[10px] font-mono text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded shrink-0">
                           {s.data.length} data
                         </span>
                       </div>
@@ -359,9 +358,9 @@ export const SheetTabs: React.FC<SheetTabsProps> = ({
                       onAddSheet();
                       setShowSheetListDropdown(false);
                     }}
-                    className="flex items-center gap-1 text-[11px] text-indigo-600 hover:text-indigo-800 font-medium py-1"
+                    className="flex items-center gap-1 text-[11px] text-slate-700 hover:text-slate-900 font-medium py-1"
                   >
-                    <Plus className="w-3 h-3" />
+                    <Plus className="w-3 h-3 text-slate-600" />
                     <span>Tambah Sheet Baru</span>
                   </button>
                   {onResetDemo && (
@@ -370,7 +369,7 @@ export const SheetTabs: React.FC<SheetTabsProps> = ({
                         onResetDemo();
                         setShowSheetListDropdown(false);
                       }}
-                      className="text-[11px] text-emerald-600 hover:text-emerald-800 font-medium py-1"
+                      className="text-[11px] text-slate-600 hover:text-slate-900 font-medium py-1"
                     >
                       Reset Demo
                     </button>
@@ -385,10 +384,10 @@ export const SheetTabs: React.FC<SheetTabsProps> = ({
         {onResetDemo && (
           <button
             onClick={onResetDemo}
-            className="flex items-center gap-1 px-2.5 py-1 text-xs text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-50 border border-slate-200 rounded-md font-medium transition-colors"
+            className="flex items-center gap-1 px-2.5 py-1 text-xs text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-50 border border-slate-200 rounded-md font-medium transition-colors shadow-2xs"
             title="Muat ulang dataset demo jika sheet demo telah di-force close"
           >
-            <RotateCcw className="w-3 h-3 text-emerald-600" />
+            <RotateCcw className="w-3 h-3 text-slate-500" />
             <span className="hidden sm:inline">Data Demo</span>
           </button>
         )}

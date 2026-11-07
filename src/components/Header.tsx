@@ -64,7 +64,7 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Zone 1: Brand Wordmark */}
           <div className="flex items-center gap-3 shrink-0">
             <div className="w-9 h-9 rounded-lg bg-slate-900 text-white flex items-center justify-center shadow-xs">
-              <FileSpreadsheet className="w-5 h-5 text-emerald-400" />
+              <FileSpreadsheet className="w-5 h-5 text-slate-100" />
             </div>
             <div>
               <div className="flex items-center gap-2">
@@ -91,7 +91,7 @@ export const Header: React.FC<HeaderProps> = ({
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              <Layers className="w-3.5 h-3.5" />
+              <Layers className="w-3.5 h-3.5 text-slate-500" />
               <span>Spreadsheet Grid</span>
             </button>
 
@@ -103,7 +103,7 @@ export const Header: React.FC<HeaderProps> = ({
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              <BarChart3 className="w-3.5 h-3.5 text-indigo-600" />
+              <BarChart3 className="w-3.5 h-3.5 text-slate-500" />
               <span>Visual Analytics</span>
             </button>
 
@@ -115,7 +115,7 @@ export const Header: React.FC<HeaderProps> = ({
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              <GitFork className="w-3.5 h-3.5 text-emerald-600" />
+              <GitFork className="w-3.5 h-3.5 text-slate-500" />
               <span>Relational & Join</span>
             </button>
 
@@ -127,10 +127,10 @@ export const Header: React.FC<HeaderProps> = ({
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              <Filter className="w-3.5 h-3.5 text-amber-600" />
+              <Filter className="w-3.5 h-3.5 text-slate-500" />
               <span>Filter Studio</span>
               {filterCount > 0 && (
-                <span className="w-4 h-4 rounded-full bg-amber-500 text-white text-[10px] flex items-center justify-center font-bold">
+                <span className="w-4 h-4 rounded-full bg-slate-900 text-white text-[10px] flex items-center justify-center font-bold">
                   {filterCount}
                 </span>
               )}

@@ -507,19 +507,29 @@ export function executeRelationalJoin(
   sheets: Sheet[],
   config: RelationalJoinConfig
 ): {
-  columns: { key: string; name: string; type: string; sourceSheetId: string; sourceColumnKey: string }[];
+  columns: {
+    key: string;
+    name: string;
+    type: string;
+    sourceSheetId: string;
+    sourceColumnKey: string;
+    currencyCode?: string;
+  }[];
   rows: Record<string, any>[];
 } {
   const primarySheet = sheets.find((s) => s.id === config.primarySheetId);
   const foreignSheet = sheets.find((s) => s.id === config.foreignSheetId);
+  const tertiarySheet = config.tertiarySheetId
+    ? sheets.find((s) => s.id === config.tertiarySheetId)
+    : undefined;
 
   if (!primarySheet || !foreignSheet) {
     return { columns: [], rows: [] };
   }
 
-  // Build column definitions with guaranteed unique keys across both sheets
+  // Build column definitions with guaranteed unique keys across all participating sheets
   const columns = config.includedColumns.map((colSpec, idx) => {
-    const sourceSheet = colSpec.sheetId === primarySheet.id ? primarySheet : foreignSheet;
+    const sourceSheet = sheets.find((s) => s.id === colSpec.sheetId) || primarySheet;
     const colDef = sourceSheet.columns.find((c) => c.key === colSpec.columnKey);
     const uniqueKey = `${sourceSheet.id}_${colSpec.columnKey}_${idx}`;
     return {
@@ -528,12 +538,14 @@ export function executeRelationalJoin(
       type: colDef ? colDef.type : 'text',
       sourceSheetId: sourceSheet.id,
       sourceColumnKey: colSpec.columnKey,
+      currencyCode: colDef?.currencyCode,
     };
   });
 
   const joinedRows: Record<string, any>[] = [];
 
   primarySheet.data.forEach((pRow, idx) => {
+    // 1. Join Foreign Sheet (Sheet 2)
     const pKeyVal = pRow[config.primaryKeyColumn];
     const pKeyStr = String(pKeyVal || '').trim().toLowerCase();
     const matchRow = foreignSheet.data.find(
@@ -544,13 +556,40 @@ export function executeRelationalJoin(
       return; // Skip non-matching rows in inner join
     }
 
+    // 2. Join Tertiary Sheet (Sheet 3) if configured
+    let tertiaryMatchRow: Record<string, any> | null = null;
+    if (tertiarySheet && config.tertiarySourceKeyColumn && config.tertiaryTargetKeyColumn) {
+      // Find matching source key in primary row or foreign row
+      const tertKeyVal =
+        pRow[config.tertiarySourceKeyColumn] !== undefined
+          ? pRow[config.tertiarySourceKeyColumn]
+          : matchRow
+          ? matchRow[config.tertiarySourceKeyColumn]
+          : '';
+      const tertKeyStr = String(tertKeyVal || '').trim().toLowerCase();
+
+      tertiaryMatchRow =
+        tertiarySheet.data.find(
+          (tRow) =>
+            String(tRow[config.tertiaryTargetKeyColumn!] || '').trim().toLowerCase() === tertKeyStr
+        ) || null;
+
+      if (config.tertiaryJoinType === 'inner' && !tertiaryMatchRow) {
+        return; // Skip non-matching rows in tertiary inner join
+      }
+    }
+
     const rowObj: Record<string, any> = { _id: `join-${idx}` };
 
     columns.forEach((col) => {
       if (col.sourceSheetId === primarySheet.id) {
         rowObj[col.key] = pRow[col.sourceColumnKey];
-      } else {
+      } else if (col.sourceSheetId === foreignSheet.id) {
         rowObj[col.key] = matchRow ? matchRow[col.sourceColumnKey] : null;
+      } else if (tertiarySheet && col.sourceSheetId === tertiarySheet.id) {
+        rowObj[col.key] = tertiaryMatchRow ? tertiaryMatchRow[col.sourceColumnKey] : null;
+      } else {
+        rowObj[col.key] = null;
       }
     });
 

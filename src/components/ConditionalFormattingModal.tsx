@@ -6,7 +6,6 @@ import {
   Plus,
   Trash2,
   Sliders,
-  Sparkles,
   Layers,
   ArrowUpDown,
   CheckCircle2,
@@ -210,8 +209,8 @@ export const ConditionalFormattingModal: React.FC<ConditionalFormattingModalProp
                 : 'border-transparent text-slate-500 hover:text-slate-800'
             }`}
           >
-            <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-            <span>Preset Cepat 1-Klik</span>
+            <Layers className="w-3.5 h-3.5 text-slate-500" />
+            <span>Preset Cepat</span>
           </button>
         </div>
 
@@ -246,6 +245,31 @@ export const ConditionalFormattingModal: React.FC<ConditionalFormattingModalProp
               </div>
             ) : (
               <div className="space-y-3">
+                {/* Control bar: Quick bulk enable/disable */}
+                <div className="flex items-center justify-between pb-1 text-xs">
+                  <span className="text-slate-500 font-medium">
+                    {rules.filter((r) => r.enabled).length} dari {rules.length} aturan aktif (kondisi awal default non-aktif)
+                  </span>
+                  <div className="flex items-center gap-2">
+                    {rules.some((r) => r.enabled) && (
+                      <button
+                        onClick={() => rules.forEach((r) => r.enabled && onUpdateRule({ ...r, enabled: false }))}
+                        className="text-[11px] font-semibold text-slate-600 hover:text-slate-900 px-2 py-1 bg-slate-100 hover:bg-slate-200 rounded-md transition-colors"
+                      >
+                        Matikan Semua
+                      </button>
+                    )}
+                    {rules.some((r) => !r.enabled) && (
+                      <button
+                        onClick={() => rules.forEach((r) => !r.enabled && onUpdateRule({ ...r, enabled: true }))}
+                        className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 px-2 py-1 bg-indigo-50 hover:bg-indigo-100 rounded-md transition-colors"
+                      >
+                        Aktifkan Semua
+                      </button>
+                    )}
+                  </div>
+                </div>
+
                 {rules.map((r) => {
                   const targetCol = sheet.columns.find((c) => c.key === r.columnKey);
                   return (
@@ -297,14 +321,14 @@ export const ConditionalFormattingModal: React.FC<ConditionalFormattingModalProp
 
                             {r.type === 'icon_set' && r.iconSet && (
                               <div className="flex items-center gap-1.5">
-                                <span className="font-medium text-slate-700">Kumpulan Ikon:</span>
-                                <span className="font-mono">
-                                  {r.iconSet.type === 'traffic_lights' && '🟢 🟡 🔴'}
-                                  {r.iconSet.type === 'trend_arrows' && '▲ ▶ ▼'}
-                                  {r.iconSet.type === 'shapes' && '🟩 🟨 🟥'}
-                                  {r.iconSet.type === 'stars' && '★★★ ★★☆ ★☆☆'}
-                                  {r.iconSet.type === 'status' && '✔ ⚠ ✖'}
-                                  {r.iconSet.type === 'flags' && '🚩 🏳 🏁'}
+                                <span className="font-medium text-slate-700">Kumpulan Indikator:</span>
+                                <span className="font-mono text-slate-600">
+                                  {r.iconSet.type === 'traffic_lights' && '● ● ● (Tiga Warna)'}
+                                  {r.iconSet.type === 'trend_arrows' && '↑ → ↓ (Panah Tren)'}
+                                  {r.iconSet.type === 'shapes' && '■ ■ ■ (Geometris)'}
+                                  {r.iconSet.type === 'stars' && '★★★ (Peringkat)'}
+                                  {r.iconSet.type === 'status' && '✓ – ✕ (Status)'}
+                                  {r.iconSet.type === 'flags' && '⚑ ⚐ ⚐ (Prioritas)'}
                                 </span>
                               </div>
                             )}
@@ -652,117 +676,117 @@ export const ConditionalFormattingModal: React.FC<ConditionalFormattingModalProp
         {/* Tab 3: Quick 1-Click Presets */}
         {activeTab === 'presets' && (
           <div className="flex-1 overflow-y-auto p-6 space-y-4">
-            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-amber-600 shrink-0" />
-              <span>Klik salah satu preset di bawah untuk langsung menerapkan aturan format bersyarat ke sheet aktif.</span>
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 flex items-center gap-2">
+              <Layers className="w-4 h-4 text-slate-500 shrink-0" />
+              <span>Pilih salah satu preset standar di bawah untuk langsung menambahkan aturan format ke sheet aktif.</span>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-              <div className="p-4 bg-white border border-slate-200 rounded-xl hover:border-indigo-400 hover:shadow-xs transition-all flex flex-col justify-between">
+              <div className="p-4 bg-white border border-slate-200 rounded-xl hover:border-slate-300 hover:shadow-2xs transition-all flex flex-col justify-between">
                 <div>
-                  <div className="w-full h-3 rounded bg-gradient-to-r from-emerald-50 to-emerald-400 border border-slate-200 mb-2" />
-                  <h4 className="font-bold text-xs text-slate-900">🔥 Heatmap Sel Nilai Tinggi (Harga Satuan)</h4>
+                  <div className="w-full h-3 rounded bg-gradient-to-r from-slate-100 to-slate-400 border border-slate-200 mb-2" />
+                  <h4 className="font-semibold text-xs text-slate-900">Heatmap Nilai Satuan (Harga Satuan)</h4>
                   <p className="text-[11px] text-slate-500 mt-0.5">
-                    Mewarnai sel kolom UnitPrice dengan gradien Zamrud, semakin tinggi harga semakin kontras warnanya.
+                    Mewarnai sel kolom UnitPrice dengan gradien warna halus, semakin tinggi nilai semakin pekat kontrasnya.
                   </p>
                 </div>
                 <button
                   onClick={() =>
                     applyPreset({
                       id: 'cf-preset-unitprice',
-                      name: '🔥 Heatmap Harga Satuan (Emerald)',
+                      name: 'Heatmap Harga Satuan',
                       enabled: true,
                       columnKey: 'UnitPrice',
                       type: 'color_scale',
                       colorScale: { preset: 'emerald_gradient' },
                     })
                   }
-                  className="mt-3 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-semibold rounded-lg text-xs border border-emerald-200 transition-colors w-full text-center"
+                  className="mt-3 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white font-medium rounded-lg text-xs transition-colors w-full text-center shadow-2xs"
                 >
                   Terapkan Heatmap Harga
                 </button>
               </div>
 
-              <div className="p-4 bg-white border border-slate-200 rounded-xl hover:border-indigo-400 hover:shadow-xs transition-all flex flex-col justify-between">
+              <div className="p-4 bg-white border border-slate-200 rounded-xl hover:border-slate-300 hover:shadow-2xs transition-all flex flex-col justify-between">
                 <div>
-                  <div className="text-base tracking-widest mb-1.5">▲  ▶  ▼</div>
-                  <h4 className="font-bold text-xs text-slate-900">🚦 Indikator Panah Tren (Volume Jumlah)</h4>
+                  <div className="text-sm font-mono tracking-widest text-slate-600 mb-1.5">↑  →  ↓</div>
+                  <h4 className="font-semibold text-xs text-slate-900">Indikator Panah Tren (Volume Jumlah)</h4>
                   <p className="text-[11px] text-slate-500 mt-0.5">
-                    Memberikan ikon panah hijau untuk volume tinggi, kuning untuk menengah, dan merah untuk volume rendah.
+                    Memberikan simbol panah arah untuk volume tinggi, menengah, dan volume rendah secara proporsional.
                   </p>
                 </div>
                 <button
                   onClick={() =>
                     applyPreset({
                       id: 'cf-preset-quantity',
-                      name: '🚦 Indikator Volume Jumlah',
+                      name: 'Indikator Volume Jumlah',
                       enabled: true,
                       columnKey: 'Quantity',
                       type: 'icon_set',
                       iconSet: { type: 'trend_arrows', reverseOrder: false },
                     })
                   }
-                  className="mt-3 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 font-semibold rounded-lg text-xs border border-indigo-200 transition-colors w-full text-center"
+                  className="mt-3 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white font-medium rounded-lg text-xs transition-colors w-full text-center shadow-2xs"
                 >
-                  Terapkan Ikon Volume
+                  Terapkan Indikator Volume
                 </button>
               </div>
 
-              <div className="p-4 bg-white border border-slate-200 rounded-xl hover:border-indigo-400 hover:shadow-xs transition-all flex flex-col justify-between">
+              <div className="p-4 bg-white border border-slate-200 rounded-xl hover:border-slate-300 hover:shadow-2xs transition-all flex flex-col justify-between">
                 <div>
                   <div className="w-full h-3 bg-slate-100 rounded border border-slate-200 mb-2 overflow-hidden">
-                    <div className="w-3/5 h-full bg-indigo-500" />
+                    <div className="w-3/5 h-full bg-slate-700" />
                   </div>
-                  <h4 className="font-bold text-xs text-slate-900">📊 Bilah Data Bar (TotalAmount)</h4>
+                  <h4 className="font-semibold text-xs text-slate-900">Bilah Data Horizontal (Total Penjualan)</h4>
                   <p className="text-[11px] text-slate-500 mt-0.5">
-                    Menampilkan data bar horizontal di latar belakang sel Total Penjualan proporsional terhadap nilai transaksi.
+                    Menampilkan data bar horizontal di latar belakang sel proporsional terhadap nilai total penjualan.
                   </p>
                 </div>
                 <button
                   onClick={() =>
                     applyPreset({
                       id: 'cf-preset-total',
-                      name: '📊 Data Bar Total Penjualan',
+                      name: 'Bilah Data Total Penjualan',
                       enabled: true,
                       columnKey: 'TotalAmount',
                       type: 'data_bar',
                       dataBar: { color: 'indigo', showValue: true },
                     })
                   }
-                  className="mt-3 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 font-semibold rounded-lg text-xs border border-indigo-200 transition-colors w-full text-center"
+                  className="mt-3 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white font-medium rounded-lg text-xs transition-colors w-full text-center shadow-2xs"
                 >
-                  Terapkan Data Bar
+                  Terapkan Bilah Data
                 </button>
               </div>
 
-              <div className="p-4 bg-white border border-slate-200 rounded-xl hover:border-indigo-400 hover:shadow-xs transition-all flex flex-col justify-between">
+              <div className="p-4 bg-white border border-slate-200 rounded-xl hover:border-slate-300 hover:shadow-2xs transition-all flex flex-col justify-between">
                 <div>
-                  <div className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 mb-2">
+                  <div className="inline-block px-2 py-0.5 rounded text-[10px] font-mono font-medium bg-slate-100 text-slate-800 border border-slate-200 mb-2">
                     Lunas
                   </div>
-                  <h4 className="font-bold text-xs text-slate-900">✨ Sorot Status Lunas</h4>
+                  <h4 className="font-semibold text-xs text-slate-900">Sorot Status Lunas</h4>
                   <p className="text-[11px] text-slate-500 mt-0.5">
-                    Memberikan latar belakang hijau lembut dan teks tebal untuk transaksi pesanan yang telah lunas.
+                    Memberikan penekanan latar belakang lembut dan teks tebal untuk transaksi yang telah terbayar lunas.
                   </p>
                 </div>
                 <button
                   onClick={() =>
                     applyPreset({
                       id: 'cf-preset-lunas',
-                      name: '✨ Highlight Status Lunas',
+                      name: 'Sorot Status Lunas',
                       enabled: true,
                       columnKey: 'PaymentStatus',
                       type: 'single_color',
                       singleColor: {
                         operator: 'equals',
                         value: 'Lunas',
-                        bgColor: '#dcfce7',
-                        textColor: '#15803d',
+                        bgColor: '#f1f5f9',
+                        textColor: '#0f172a',
                         bold: true,
                       },
                     })
                   }
-                  className="mt-3 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-semibold rounded-lg text-xs border border-emerald-200 transition-colors w-full text-center"
+                  className="mt-3 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white font-medium rounded-lg text-xs transition-colors w-full text-center shadow-2xs"
                 >
                   Terapkan Sorot Lunas
                 </button>

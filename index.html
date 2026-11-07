@@ -12,6 +12,20 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+      // Suppress Vite dev server WebSocket disconnect error in Cloud Run proxy / iframe environment
+      window.addEventListener('error', function (event) {
+        if (event && event.message && (event.message.includes('WebSocket') || event.message.includes('websocket'))) {
+          event.stopImmediatePropagation();
+          event.preventDefault();
+        }
+      });
+      window.addEventListener('unhandledrejection', function (event) {
+        if (event && event.reason && String(event.reason).toLowerCase().includes('websocket')) {
+          event.preventDefault();
+        }
+      });
+    </script>
   </head>
   <body class="bg-slate-50 text-slate-800 antialiased font-sans selection:bg-slate-200">
     <div id="root"></div>
