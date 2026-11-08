@@ -40,10 +40,8 @@ export default function App() {
   const [filtersBySheet, setFiltersBySheet] = useState<Record<string, FilterRule[]>>({});
   const [sortConfigBySheet, setSortConfigBySheet] = useState<Record<string, SortConfig | null>>({});
 
-  // Conditional formatting rules per sheet
-  const [conditionalRulesBySheet, setConditionalRulesBySheet] = useState<Record<string, ConditionalFormattingRule[]>>({
-    'sheet-orders': getDefaultConditionalRules('sheet-orders'),
-  });
+  // Conditional formatting rules per sheet (starts clean/uncluttered by default)
+  const [conditionalRulesBySheet, setConditionalRulesBySheet] = useState<Record<string, ConditionalFormattingRule[]>>({});
   const [showConditionalModal, setShowConditionalModal] = useState<boolean>(false);
 
   // Notification toast
@@ -213,9 +211,7 @@ export default function App() {
     setSortConfigBySheet({});
     setGlobalQuery('');
     setSelectedCategory('ALL');
-    setConditionalRulesBySheet({
-      'sheet-orders': getDefaultConditionalRules('sheet-orders'),
-    });
+    setConditionalRulesBySheet({});
     showToast('Dataset contoh relational telah direset ke setelan awal.', 'success');
   };
 

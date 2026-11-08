@@ -649,7 +649,7 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
             <button
               onClick={() => handleInsertQuickFormula('MULTIPLY')}
               disabled={!selectedCell}
-              className="px-2 py-0.5 text-[11px] font-mono font-semibold bg-white text-slate-700 rounded hover:bg-slate-100 hover:text-indigo-600 disabled:opacity-40 transition-colors shadow-2xs"
+              className="px-2 py-0.5 text-[11px] font-mono font-semibold bg-white text-slate-700 rounded hover:bg-slate-100 hover:text-slate-900 disabled:opacity-40 transition-colors shadow-2xs cursor-pointer"
               title="Sisipkan rumus perkalian kolom: =[Quantity] * [UnitPrice]"
             >
               QTY×PRICE
@@ -658,23 +658,23 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
 
           <button
             onClick={() => setShowFormulaHelp(true)}
-            className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-md transition-colors shadow-2xs"
+            className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-md transition-colors shadow-2xs cursor-pointer"
             title="Lihat panduan sintaks rumus spreadsheet"
           >
-            <HelpCircle className="w-3.5 h-3.5 text-indigo-600" />
+            <HelpCircle className="w-3.5 h-3.5 text-slate-500" />
             <span>Panduan Rumus</span>
           </button>
 
           <button
             onClick={() => openValidationModal()}
-            className={`flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium border rounded-md transition-colors shadow-2xs ${
+            className={`flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium border rounded-md transition-colors shadow-2xs cursor-pointer ${
               validationErrors.size > 0
                 ? 'text-rose-700 bg-rose-50 border-rose-200 hover:bg-rose-100'
                 : 'text-slate-700 bg-white border-slate-200 hover:bg-slate-50'
             }`}
             title="Atur aturan validasi data kolom (angka, unik, rentang, dll.)"
           >
-            <ShieldCheck className={`w-3.5 h-3.5 ${validationErrors.size > 0 ? 'text-rose-600' : 'text-emerald-600'}`} />
+            <ShieldCheck className={`w-3.5 h-3.5 ${validationErrors.size > 0 ? 'text-rose-600' : 'text-slate-500'}`} />
             <span>Validasi Kolom</span>
             {validationErrors.size > 0 && (
               <span className="px-1.5 py-0.2 rounded-full bg-rose-600 text-white text-[10px] font-bold">
@@ -699,13 +699,16 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
       </div>
 
       {/* Main Grid Viewport */}
-      <div className="flex-1 overflow-auto bg-slate-100/50">
-        <table className="border-collapse table-fixed w-full text-xs text-left bg-white">
+      <div className="flex-1 overflow-x-auto overflow-y-auto bg-slate-100/50">
+        <table
+          style={{ minWidth: `${Math.max(1200, visibleColumns.reduce((sum, c) => sum + (c.width || 150), 60))}px` }}
+          className="border-collapse table-fixed w-full text-xs text-left bg-white"
+        >
           {/* Header Row */}
           <thead className="sticky top-0 z-20 bg-slate-100 border-b border-slate-300 shadow-2xs select-none">
             <tr>
               {/* Row Selector Column */}
-              <th className="w-12 px-2 py-2 text-center bg-slate-100 border-r border-slate-200 font-mono text-[11px] text-slate-500">
+              <th className="w-12 px-2 py-2 text-center bg-slate-100 border-r border-slate-200 font-mono text-[11px] text-slate-500 sticky left-0 z-30 shadow-xs">
                 <input
                   type="checkbox"
                   checked={rows.length > 0 && selectedRowIds.length === rows.length}
@@ -825,7 +828,7 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
                     }`}
                   >
                     {/* Row Number & Checkbox */}
-                    <td className="px-2 py-1.5 text-center border-r border-slate-200 font-mono text-[11px] text-slate-400 bg-slate-50/60 select-none">
+                    <td className="px-2 py-1.5 text-center border-r border-slate-200 font-mono text-[11px] text-slate-500 bg-slate-50/95 select-none sticky left-0 z-10 shadow-xs">
                       <div className="flex items-center justify-center gap-1">
                         <input
                           type="checkbox"
@@ -1064,7 +1067,7 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
           {rows.length > 0 && (
             <tfoot className="sticky bottom-0 z-20 bg-slate-100 border-t-2 border-slate-300 font-semibold text-slate-800">
               <tr>
-                <td className="px-2 py-2 text-center text-slate-500 border-r border-slate-200 font-mono text-[10px] uppercase">
+                <td className="px-2 py-2 text-center text-slate-500 border-r border-slate-200 font-mono text-[10px] uppercase sticky left-0 z-30 bg-slate-100 shadow-xs">
                   Total
                 </td>
                 {visibleColumns.map((col, cIdx) => {

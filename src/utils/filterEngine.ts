@@ -502,7 +502,108 @@ export function resolveRelation(
   return { targetRow: row, displayText };
 }
 
-// Execute relational Join between Sheet A and Sheet B
+// Find best matching keys between two sheets for relational join
+export function findBestJoinKeys(
+  sourceSheet: Sheet,
+  targetSheet: Sheet,
+  configuredSourceKey?: string,
+  configuredTargetKey?: string
+): { sourceKey: string; targetKey: string } {
+  const targetPk =
+    targetSheet.primaryKey ||
+    targetSheet.columns.find((c) => c.isPrimaryKey)?.key ||
+    targetSheet.columns[0]?.key ||
+    '';
+
+  const sourcePk =
+    sourceSheet.primaryKey ||
+    sourceSheet.columns.find((c) => c.isPrimaryKey)?.key ||
+    sourceSheet.columns[0]?.key ||
+    '';
+
+  const testMatch = (sKey: string, tKey: string): boolean => {
+    if (!sKey || !tKey) return false;
+    let hits = 0;
+    for (const sRow of sourceSheet.data) {
+      const sVal = sRow[sKey];
+      if (sVal === undefined || sVal === null || sVal === '') continue;
+      const sStr = String(sVal).trim().toLowerCase();
+      const found = targetSheet.data.some((tRow) => {
+        const tVal = tRow[tKey];
+        if (tVal === undefined || tVal === null || tVal === '') return false;
+        return String(tVal).trim().toLowerCase() === sStr;
+      });
+      if (found) {
+        hits++;
+        if (hits >= 2) return true;
+      }
+    }
+    return hits > 0;
+  };
+
+  // 1. If configured keys yield matches, keep them!
+  if (configuredSourceKey && configuredTargetKey && testMatch(configuredSourceKey, configuredTargetKey)) {
+    return { sourceKey: configuredSourceKey, targetKey: configuredTargetKey };
+  }
+
+  // 2. Direct relation from sourceSheet to targetSheet
+  const directRelCol = sourceSheet.columns.find(
+    (c) => c.relation?.targetSheetId === targetSheet.id
+  );
+  if (directRelCol) {
+    const tKey = directRelCol.relation?.targetColumnKey || targetPk || targetSheet.columns[0]?.key || '';
+    return { sourceKey: directRelCol.key, targetKey: tKey };
+  }
+
+  // 3. Reverse relation from targetSheet to sourceSheet
+  const reverseRelCol = targetSheet.columns.find(
+    (c) => c.relation?.targetSheetId === sourceSheet.id
+  );
+  if (reverseRelCol) {
+    const sKey = reverseRelCol.relation?.targetColumnKey || sourcePk || sourceSheet.columns[0]?.key || '';
+    return { sourceKey: sKey, targetKey: reverseRelCol.key };
+  }
+
+  // 4. Exact column key match (e.g. both have CustomerID, or ProductID)
+  for (const sc of sourceSheet.columns) {
+    const tc = targetSheet.columns.find(
+      (c) => c.key.toLowerCase() === sc.key.toLowerCase() || c.name.toLowerCase() === sc.name.toLowerCase()
+    );
+    if (tc && testMatch(sc.key, tc.key)) {
+      return { sourceKey: sc.key, targetKey: tc.key };
+    }
+  }
+
+  // 5. Look for any column in sourceSheet matching targetSheet's primaryKey
+  if (targetPk) {
+    const matchedByPk = sourceSheet.columns.find(
+      (sc) =>
+        sc.key.toLowerCase() === targetPk.toLowerCase() ||
+        sc.key.toLowerCase().endsWith(targetPk.toLowerCase()) ||
+        sc.name.toLowerCase().includes(targetPk.toLowerCase())
+    );
+    if (matchedByPk && testMatch(matchedByPk.key, targetPk)) {
+      return { sourceKey: matchedByPk.key, targetKey: targetPk };
+    }
+  }
+
+  // 6. Find any pair of columns between source and target that produces matches
+  for (const sc of sourceSheet.columns) {
+    for (const tc of targetSheet.columns) {
+      if (testMatch(sc.key, tc.key)) {
+        return { sourceKey: sc.key, targetKey: tc.key };
+      }
+    }
+  }
+
+  // 7. Fallback to specified or primary keys
+  return {
+    sourceKey: configuredSourceKey || sourcePk || sourceSheet.columns[0]?.key || '',
+    targetKey: configuredTargetKey || targetPk || targetSheet.columns[0]?.key || '',
+  };
+}
+
+// Execute relational Join between Sheet A and Sheet B (and optional Sheet C)
 export function executeRelationalJoin(
   sheets: Sheet[],
   config: RelationalJoinConfig
@@ -527,6 +628,28 @@ export function executeRelationalJoin(
     return { columns: [], rows: [] };
   }
 
+  // Resolve best matching keys for Primary -> Foreign
+  const { sourceKey: pKeyCol, targetKey: fKeyCol } = findBestJoinKeys(
+    primarySheet,
+    foreignSheet,
+    config.primaryKeyColumn,
+    config.foreignKeyColumn
+  );
+
+  // Resolve best matching keys for Primary -> Tertiary (if 3-sheet mode)
+  let tertSourceCol = config.tertiarySourceKeyColumn;
+  let tertTargetCol = config.tertiaryTargetKeyColumn;
+  if (tertiarySheet) {
+    const tertResolved = findBestJoinKeys(
+      primarySheet,
+      tertiarySheet,
+      config.tertiarySourceKeyColumn,
+      config.tertiaryTargetKeyColumn
+    );
+    tertSourceCol = tertResolved.sourceKey;
+    tertTargetCol = tertResolved.targetKey;
+  }
+
   // Build column definitions with guaranteed unique keys across all participating sheets
   const columns = config.includedColumns.map((colSpec, idx) => {
     const sourceSheet = sheets.find((s) => s.id === colSpec.sheetId) || primarySheet;
@@ -546,11 +669,18 @@ export function executeRelationalJoin(
 
   primarySheet.data.forEach((pRow, idx) => {
     // 1. Join Foreign Sheet (Sheet 2)
-    const pKeyVal = pRow[config.primaryKeyColumn];
-    const pKeyStr = String(pKeyVal || '').trim().toLowerCase();
-    const matchRow = foreignSheet.data.find(
-      (fRow) => String(fRow[config.foreignKeyColumn] || '').trim().toLowerCase() === pKeyStr
+    const pKeyVal = pRow[pKeyCol];
+    const pKeyStr = String(pKeyVal ?? '').trim().toLowerCase();
+    let matchRow = foreignSheet.data.find(
+      (fRow) => String(fRow[fKeyCol] ?? '').trim().toLowerCase() === pKeyStr
     );
+
+    // Dynamic backup matcher if specific row didn't match directly
+    if (!matchRow && pKeyVal !== undefined && pKeyVal !== null && pKeyVal !== '') {
+      matchRow = foreignSheet.data.find(
+        (fRow) => String(fRow[fKeyCol] ?? '').trim() === String(pKeyVal).trim()
+      );
+    }
 
     if (config.joinType === 'inner' && !matchRow) {
       return; // Skip non-matching rows in inner join
@@ -558,21 +688,28 @@ export function executeRelationalJoin(
 
     // 2. Join Tertiary Sheet (Sheet 3) if configured
     let tertiaryMatchRow: Record<string, any> | null = null;
-    if (tertiarySheet && config.tertiarySourceKeyColumn && config.tertiaryTargetKeyColumn) {
+    if (tertiarySheet && tertSourceCol && tertTargetCol) {
       // Find matching source key in primary row or foreign row
       const tertKeyVal =
-        pRow[config.tertiarySourceKeyColumn] !== undefined
-          ? pRow[config.tertiarySourceKeyColumn]
+        pRow[tertSourceCol] !== undefined
+          ? pRow[tertSourceCol]
           : matchRow
-          ? matchRow[config.tertiarySourceKeyColumn]
+          ? matchRow[tertSourceCol]
           : '';
-      const tertKeyStr = String(tertKeyVal || '').trim().toLowerCase();
+      const tertKeyStr = String(tertKeyVal ?? '').trim().toLowerCase();
 
       tertiaryMatchRow =
         tertiarySheet.data.find(
           (tRow) =>
-            String(tRow[config.tertiaryTargetKeyColumn!] || '').trim().toLowerCase() === tertKeyStr
+            String(tRow[tertTargetCol!] ?? '').trim().toLowerCase() === tertKeyStr
         ) || null;
+
+      if (!tertiaryMatchRow && tertKeyVal !== undefined && tertKeyVal !== null && tertKeyVal !== '') {
+        tertiaryMatchRow =
+          tertiarySheet.data.find(
+            (tRow) => String(tRow[tertTargetCol!] ?? '').trim() === String(tertKeyVal).trim()
+          ) || null;
+      }
 
       if (config.tertiaryJoinType === 'inner' && !tertiaryMatchRow) {
         return; // Skip non-matching rows in tertiary inner join
@@ -583,11 +720,11 @@ export function executeRelationalJoin(
 
     columns.forEach((col) => {
       if (col.sourceSheetId === primarySheet.id) {
-        rowObj[col.key] = pRow[col.sourceColumnKey];
+        rowObj[col.key] = pRow[col.sourceColumnKey] ?? null;
       } else if (col.sourceSheetId === foreignSheet.id) {
-        rowObj[col.key] = matchRow ? matchRow[col.sourceColumnKey] : null;
+        rowObj[col.key] = matchRow ? matchRow[col.sourceColumnKey] ?? null : null;
       } else if (tertiarySheet && col.sourceSheetId === tertiarySheet.id) {
-        rowObj[col.key] = tertiaryMatchRow ? tertiaryMatchRow[col.sourceColumnKey] : null;
+        rowObj[col.key] = tertiaryMatchRow ? tertiaryMatchRow[col.sourceColumnKey] ?? null : null;
       } else {
         rowObj[col.key] = null;
       }

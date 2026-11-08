@@ -244,7 +244,7 @@ export const ColumnCategoryManager: React.FC<ColumnCategoryManagerProps> = ({
                     <div className="flex items-end gap-2">
                       <button
                         type="submit"
-                        className="px-3 py-1.5 bg-emerald-600 text-white rounded font-medium hover:bg-emerald-700 transition-colors w-full"
+                        className="px-3 py-1.5 bg-slate-900 text-white rounded font-medium hover:bg-slate-800 transition-colors shadow-2xs cursor-pointer w-full"
                       >
                         Simpan Kolom
                       </button>
@@ -449,7 +449,7 @@ export const ColumnCategoryManager: React.FC<ColumnCategoryManagerProps> = ({
                             <td className="px-3 py-2.5 text-right space-x-1">
                               <button
                                 onClick={handleSaveColumnEdit}
-                                className="px-2 py-1 bg-emerald-600 text-white rounded hover:bg-emerald-700 transition-colors"
+                                className="px-2 py-1 bg-slate-900 text-white rounded hover:bg-slate-800 transition-colors shadow-2xs cursor-pointer"
                               >
                                 Simpan
                               </button>
