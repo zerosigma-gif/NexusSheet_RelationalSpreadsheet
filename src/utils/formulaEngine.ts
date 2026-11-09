@@ -147,6 +147,21 @@ export class FormulaEngine {
   }
 
   /**
+   * Directly evaluate an ad-hoc formula string (e.g. '=SUM(A1:A5)') for live preview
+   */
+  public evaluateFormulaString(formulaStr: string, rowId?: string, colKey?: string): any {
+    if (!isFormula(formulaStr)) return formulaStr;
+    const expr = formulaStr.trim().substring(1);
+    const rId = rowId || this.sheet.data[0]?._id || 'temp-row';
+    const cKey = colKey || this.sheet.columns[0]?.key || 'temp-col';
+    try {
+      return this.evaluateExpression(expr, rId, cKey);
+    } catch (err: any) {
+      return err.message && err.message.startsWith('#') ? err.message : '#ERROR!';
+    }
+  }
+
+  /**
    * Parse and evaluate formula expression
    */
   private evaluateExpression(expr: string, currentRowId: string, currentColKey: string): any {

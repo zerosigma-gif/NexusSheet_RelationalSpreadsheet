@@ -160,19 +160,19 @@ export const RelationalExplorer: React.FC<RelationalExplorerProps> = ({
 
     const cols: { sheetId: string; columnKey: string; alias: string }[] = [];
 
-    // Sheet 1 columns (top 5)
-    primarySheet.columns.slice(0, 5).forEach((c) => {
+    // Include all columns from Sheet 1 (Primary)
+    primarySheet.columns.forEach((c) => {
       cols.push({ sheetId: primarySheet.id, columnKey: c.key, alias: c.name });
     });
 
-    // Sheet 2 columns (top 4, ensuring foreign attributes are populated)
-    foreignSheet.columns.slice(0, 4).forEach((c) => {
+    // Include all columns from Sheet 2 (Foreign)
+    foreignSheet.columns.forEach((c) => {
       cols.push({ sheetId: foreignSheet.id, columnKey: c.key, alias: c.name });
     });
 
-    // Sheet 3 columns (if 3-sheet mode active)
+    // Include all columns from Sheet 3 (Tertiary if in 3-sheet mode)
     if (joinMode === 'three_sheets' && tertiarySheet && tertiarySheet.id !== primarySheet.id && tertiarySheet.id !== foreignSheet.id) {
-      tertiarySheet.columns.slice(0, 4).forEach((c) => {
+      tertiarySheet.columns.forEach((c) => {
         cols.push({ sheetId: tertiarySheet.id, columnKey: c.key, alias: c.name });
       });
     }
@@ -778,33 +778,57 @@ export const RelationalExplorer: React.FC<RelationalExplorerProps> = ({
 
         {/* Step 2: Columns Selection Matrix */}
         <div className="space-y-3 pt-2">
-          <div className="flex items-center justify-between">
-            <div className="text-xs font-bold uppercase tracking-wider text-slate-400">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="text-xs font-bold uppercase tracking-wider text-slate-500">
               Langkah 2: Pilih Kolom yang Dimasukkan ke Master Sheet ({selectedColAliases.length} Kolom Terpilih)
             </div>
-            <button
-              type="button"
-              onClick={() => {
-                const allCols: { sheetId: string; columnKey: string; alias: string }[] = [];
-                primarySheet?.columns.forEach((c) => allCols.push({ sheetId: primarySheet.id, columnKey: c.key, alias: c.name }));
-                foreignSheet?.columns.forEach((c) => allCols.push({ sheetId: foreignSheet.id, columnKey: c.key, alias: c.name }));
-                if (joinMode === 'three_sheets' && tertiarySheet) {
-                  tertiarySheet.columns.forEach((c) => allCols.push({ sheetId: tertiarySheet.id, columnKey: c.key, alias: c.name }));
-                }
-                setSelectedColAliases(allCols);
-              }}
-              className="text-xs text-slate-600 hover:text-slate-900 font-medium hover:underline cursor-pointer"
-            >
-              Pilih Semua Kolom
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  const allCols: { sheetId: string; columnKey: string; alias: string }[] = [];
+                  primarySheet?.columns.forEach((c) => allCols.push({ sheetId: primarySheet.id, columnKey: c.key, alias: c.name }));
+                  foreignSheet?.columns.forEach((c) => allCols.push({ sheetId: foreignSheet.id, columnKey: c.key, alias: c.name }));
+                  if (joinMode === 'three_sheets' && tertiarySheet) {
+                    tertiarySheet.columns.forEach((c) => allCols.push({ sheetId: tertiarySheet.id, columnKey: c.key, alias: c.name }));
+                  }
+                  setSelectedColAliases(allCols);
+                }}
+                className="text-xs text-blue-700 hover:text-blue-900 font-semibold hover:underline cursor-pointer"
+              >
+                ✓ Pilih Semua Kolom
+              </button>
+              <span className="text-slate-300">·</span>
+              <button
+                type="button"
+                onClick={() => setSelectedColAliases([])}
+                className="text-xs text-slate-500 hover:text-slate-800 font-medium hover:underline cursor-pointer"
+              >
+                Kosongkan Pilihan
+              </button>
+            </div>
           </div>
 
-          <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3.5 max-h-56 overflow-y-auto">
+          <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-4 max-h-60 overflow-y-auto">
             {/* Sheet 1 columns */}
             <div>
-              <div className="text-[11px] font-semibold text-blue-950 mb-1.5 flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-blue-600" />
-                <span>Kolom dari {primarySheet?.name}:</span>
+              <div className="flex items-center justify-between mb-1.5">
+                <div className="text-[11px] font-semibold text-blue-950 flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-blue-600" />
+                  <span>Kolom dari {primarySheet?.name}:</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const sheetCols = primarySheet?.columns.map((c) => ({ sheetId: primarySheet.id, columnKey: c.key, alias: c.name })) || [];
+                    const otherCols = selectedColAliases.filter((c) => c.sheetId !== primarySheet?.id);
+                    const allSelected = primarySheet?.columns.every((c) => selectedColAliases.some((col) => col.sheetId === primarySheet.id && col.columnKey === c.key));
+                    setSelectedColAliases(allSelected ? otherCols : [...otherCols, ...sheetCols]);
+                  }}
+                  className="text-[10px] text-blue-700 hover:underline font-medium cursor-pointer"
+                >
+                  Pilih / Batal Semua
+                </button>
               </div>
               <div className="flex flex-wrap gap-2">
                 {primarySheet?.columns.map((c) => {
@@ -830,9 +854,23 @@ export const RelationalExplorer: React.FC<RelationalExplorerProps> = ({
 
             {/* Sheet 2 columns */}
             <div className="pt-2.5 border-t border-slate-200">
-              <div className="text-[11px] font-semibold text-teal-950 mb-1.5 flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-teal-600" />
-                <span>Kolom dari {foreignSheet?.name}:</span>
+              <div className="flex items-center justify-between mb-1.5">
+                <div className="text-[11px] font-semibold text-teal-950 flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-teal-600" />
+                  <span>Kolom dari {foreignSheet?.name}:</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const sheetCols = foreignSheet?.columns.map((c) => ({ sheetId: foreignSheet.id, columnKey: c.key, alias: c.name })) || [];
+                    const otherCols = selectedColAliases.filter((c) => c.sheetId !== foreignSheet?.id);
+                    const allSelected = foreignSheet?.columns.every((c) => selectedColAliases.some((col) => col.sheetId === foreignSheet.id && col.columnKey === c.key));
+                    setSelectedColAliases(allSelected ? otherCols : [...otherCols, ...sheetCols]);
+                  }}
+                  className="text-[10px] text-teal-700 hover:underline font-medium cursor-pointer"
+                >
+                  Pilih / Batal Semua
+                </button>
               </div>
               <div className="flex flex-wrap gap-2">
                 {foreignSheet?.columns.map((c) => {
@@ -859,9 +897,23 @@ export const RelationalExplorer: React.FC<RelationalExplorerProps> = ({
             {/* Sheet 3 columns if active */}
             {joinMode === 'three_sheets' && tertiarySheet && (
               <div className="pt-2.5 border-t border-slate-200">
-                <div className="text-[11px] font-semibold text-amber-950 mb-1.5 flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-amber-600" />
-                  <span>Kolom dari {tertiarySheet.name}:</span>
+                <div className="flex items-center justify-between mb-1.5">
+                  <div className="text-[11px] font-semibold text-amber-950 flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-amber-600" />
+                    <span>Kolom dari {tertiarySheet.name}:</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const sheetCols = tertiarySheet?.columns.map((c) => ({ sheetId: tertiarySheet.id, columnKey: c.key, alias: c.name })) || [];
+                      const otherCols = selectedColAliases.filter((c) => c.sheetId !== tertiarySheet?.id);
+                      const allSelected = tertiarySheet?.columns.every((c) => selectedColAliases.some((col) => col.sheetId === tertiarySheet.id && col.columnKey === c.key));
+                      setSelectedColAliases(allSelected ? otherCols : [...otherCols, ...sheetCols]);
+                    }}
+                    className="text-[10px] text-amber-700 hover:underline font-medium cursor-pointer"
+                  >
+                    Pilih / Batal Semua
+                  </button>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {tertiarySheet.columns.map((c) => {

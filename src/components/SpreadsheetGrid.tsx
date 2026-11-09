@@ -14,6 +14,7 @@ import {
   Trash2,
   ExternalLink,
   ChevronRight,
+  ChevronLeft,
   MoreVertical,
   Check,
   X,
@@ -50,6 +51,7 @@ import {
   FormulaEngine,
   isFormula,
   columnIndexToLetter,
+  letterToColumnIndex,
   FORMULA_DOCS
 } from '../utils/formulaEngine';
 import {
@@ -170,6 +172,21 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
 
   const editInputRef = useRef<HTMLInputElement>(null);
   const formulaInputRef = useRef<HTMLInputElement>(null);
+  const gridScrollRef = useRef<HTMLDivElement>(null);
+
+  const handleScrollGrid = (direction: 'left' | 'right' | 'start' | 'end') => {
+    if (!gridScrollRef.current) return;
+    if (direction === 'start') {
+      gridScrollRef.current.scrollTo({ left: 0, behavior: 'smooth' });
+    } else if (direction === 'end') {
+      gridScrollRef.current.scrollTo({ left: gridScrollRef.current.scrollWidth, behavior: 'smooth' });
+    } else {
+      gridScrollRef.current.scrollBy({
+        left: direction === 'left' ? -380 : 380,
+        behavior: 'smooth',
+      });
+    }
+  };
 
   // Autocomplete dropdown state
   const [autocompleteSuggestions, setAutocompleteSuggestions] = useState<AutocompleteSuggestion[]>([]);
@@ -345,6 +362,125 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
     setEditingCell(null);
   };
 
+  // Active formula cell range detection for visual cell boundary highlighting in grid (e.g. A1:A5)
+  const activeFormulaRange = useMemo(() => {
+    if (!formulaBarValue || !formulaBarValue.trim().startsWith('=')) return null;
+
+    // Range format: A1:A5 or $A$1:$A$5
+    const matchRange = formulaBarValue.match(/(\$?)([A-Za-z]+)(\$?)(\d+)\s*:\s*(\$?)([A-Za-z]+)(\$?)(\d+)/);
+    if (matchRange) {
+      const col1 = letterToColumnIndex(matchRange[2]);
+      const row1 = parseInt(matchRange[4], 10) - 1;
+      const col2 = letterToColumnIndex(matchRange[6]);
+      const row2 = parseInt(matchRange[8], 10) - 1;
+
+      return {
+        type: 'range' as const,
+        minCol: Math.min(col1, col2),
+        maxCol: Math.max(col1, col2),
+        minRow: Math.min(row1, row2),
+        maxRow: Math.max(row1, row2),
+      };
+    }
+
+    // Single cell coordinate: A1 or $A$1
+    const matchSingle = formulaBarValue.match(/(\$?)([A-Za-z]+)(\$?)(\d+)/);
+    if (matchSingle) {
+      const col = letterToColumnIndex(matchSingle[2]);
+      const row = parseInt(matchSingle[4], 10) - 1;
+      return {
+        type: 'single' as const,
+        minCol: col,
+        maxCol: col,
+        minRow: row,
+        maxRow: row,
+      };
+    }
+
+    return null;
+  }, [formulaBarValue]);
+
+  // Live dynamic calculation preview while typing in the formula bar
+  const liveFormulaPreview = useMemo(() => {
+    if (!formulaBarValue || !formulaBarValue.trim().startsWith('=')) return null;
+    const formulaStr = formulaBarValue.trim();
+    if (formulaStr.length <= 1) return null; // Just '='
+
+    try {
+      const targetRowId = selectedCell?.rowId || rows[0]?._id;
+      const targetColKey = selectedCell?.colKey || visibleColumns[0]?.key;
+      if (!targetRowId || !targetColKey) return null;
+
+      const result = formulaEngine.evaluateFormulaString(formulaStr, targetRowId, targetColKey);
+      if (result === undefined || result === null) return null;
+
+      if (typeof result === 'string' && result.startsWith('#')) {
+        return { value: result, isError: true };
+      }
+
+      const targetCol = sheet.columns.find((c) => c.key === targetColKey);
+      const formatted = formatCellValue(result, targetCol?.type || 'number', targetCol?.currencyCode);
+      return { value: formatted, raw: result, isError: false };
+    } catch {
+      return null;
+    }
+  }, [formulaBarValue, selectedCell, rows, visibleColumns, formulaEngine, sheet.columns]);
+
+  // Commit formula to current selected cell or default target cell
+  const handleCommitFormulaBar = () => {
+    let target = selectedCell;
+    if (!target && rows.length > 0 && visibleColumns.length > 0) {
+      target = {
+        rowId: rows[0]._id,
+        colKey: visibleColumns[0].key,
+        rowIndex: 0,
+        colIndex: 0,
+      };
+      setSelectedCell(target);
+    }
+    if (!target) return;
+
+    let finalVal: any = formulaBarValue;
+    if (typeof formulaBarValue === 'string' && !formulaBarValue.trim().startsWith('=')) {
+      const col = sheet.columns.find((c) => c.key === target!.colKey);
+      if (col && (col.type === 'number' || col.type === 'currency' || col.type === 'percentage')) {
+        const parsed = Number(formulaBarValue.replace(/[^\d.-]/g, ''));
+        if (!isNaN(parsed)) finalVal = parsed;
+      }
+    }
+
+    onUpdateCell(target.rowId, target.colKey, finalVal);
+    clearAutocomplete();
+    formulaInputRef.current?.blur();
+  };
+
+  // Cancel formula editing and revert to cell's raw value
+  const handleCancelFormulaBar = () => {
+    if (selectedCell) {
+      const rawVal = formulaEngine.getRawCellValue(selectedCell.rowId, selectedCell.colKey);
+      setFormulaBarValue(rawVal !== undefined && rawVal !== null ? String(rawVal) : '');
+    } else {
+      setFormulaBarValue('');
+    }
+    clearAutocomplete();
+    formulaInputRef.current?.blur();
+  };
+
+  // Auto-target cell A1 if user focuses formula bar without prior cell selection
+  const handleFormulaBarFocus = (e: React.FocusEvent<HTMLInputElement>) => {
+    if (!selectedCell && rows.length > 0 && visibleColumns.length > 0) {
+      setSelectedCell({
+        rowId: rows[0]._id,
+        colKey: visibleColumns[0].key,
+        rowIndex: 0,
+        colIndex: 0,
+      });
+    }
+    if (e.target.value.startsWith('=')) {
+      updateFormulaBarAutocomplete(e.target.value, e.target);
+    }
+  };
+
   const handleFormulaBarKeyDown = (e: React.KeyboardEvent) => {
     if (autocompleteSuggestions.length > 0) {
       if (e.key === 'ArrowDown') {
@@ -372,41 +508,42 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
       }
     }
 
-    if (e.key === 'Enter' && selectedCell) {
-      let finalVal: any = formulaBarValue;
-      if (typeof formulaBarValue === 'string' && !formulaBarValue.trim().startsWith('=')) {
-        const col = sheet.columns.find((c) => c.key === selectedCell.colKey);
-        if (col && (col.type === 'number' || col.type === 'currency' || col.type === 'percentage')) {
-          const parsed = Number(formulaBarValue.replace(/[^\d.-]/g, ''));
-          if (!isNaN(parsed)) finalVal = parsed;
-        }
-      }
-      onUpdateCell(selectedCell.rowId, selectedCell.colKey, finalVal);
-      clearAutocomplete();
-      formulaInputRef.current?.blur();
-    } else if (e.key === 'Escape' && selectedCell) {
-      const rawVal = formulaEngine.getRawCellValue(selectedCell.rowId, selectedCell.colKey);
-      setFormulaBarValue(rawVal !== undefined && rawVal !== null ? String(rawVal) : '');
-      clearAutocomplete();
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleCommitFormulaBar();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      handleCancelFormulaBar();
     }
   };
 
   const handleInsertQuickFormula = (formulaPrefix: string) => {
-    if (!selectedCell) return;
-    const currentColLetter = columnIndexToLetter(selectedCell.colIndex);
-    const prevRowNumber = Math.max(1, selectedCell.rowIndex);
+    let target = selectedCell;
+    if (!target && rows.length > 0 && visibleColumns.length > 0) {
+      target = {
+        rowId: rows[0]._id,
+        colKey: visibleColumns[0].key,
+        rowIndex: 0,
+        colIndex: 0,
+      };
+      setSelectedCell(target);
+    }
+    if (!target) return;
+
+    const currentColLetter = columnIndexToLetter(target.colIndex);
+    const prevRowNumber = Math.max(1, target.rowIndex);
 
     let template = '';
     if (formulaPrefix === 'SUM') {
-      template = `=SUM(${currentColLetter}1:${currentColLetter}${prevRowNumber})`;
+      template = `=SUM(${currentColLetter}1:${currentColLetter}${Math.max(5, prevRowNumber)})`;
     } else if (formulaPrefix === 'AVG') {
-      template = `=AVG(${currentColLetter}1:${currentColLetter}${prevRowNumber})`;
+      template = `=AVG(${currentColLetter}1:${currentColLetter}${Math.max(5, prevRowNumber)})`;
     } else if (formulaPrefix === 'COUNT') {
-      template = `=COUNT(${currentColLetter}1:${currentColLetter}${prevRowNumber})`;
+      template = `=COUNT(${currentColLetter}1:${currentColLetter}${Math.max(5, prevRowNumber)})`;
     } else if (formulaPrefix === 'MIN') {
-      template = `=MIN(${currentColLetter}1:${currentColLetter}${prevRowNumber})`;
+      template = `=MIN(${currentColLetter}1:${currentColLetter}${Math.max(5, prevRowNumber)})`;
     } else if (formulaPrefix === 'MAX') {
-      template = `=MAX(${currentColLetter}1:${currentColLetter}${prevRowNumber})`;
+      template = `=MAX(${currentColLetter}1:${currentColLetter}${Math.max(5, prevRowNumber)})`;
     } else if (formulaPrefix === 'MULTIPLY') {
       template = `=[Quantity] * [UnitPrice]`;
     } else {
@@ -414,7 +551,8 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
     }
 
     setFormulaBarValue(template);
-    onUpdateCell(selectedCell.rowId, selectedCell.colKey, template);
+    onUpdateCell(target.rowId, target.colKey, template);
+    formulaInputRef.current?.focus();
   };
 
   const openValidationModal = (colKey?: string) => {
@@ -538,168 +676,216 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
 
   return (
     <div className="flex-1 flex flex-col bg-white overflow-hidden relative">
-      {/* Enhanced Formula Bar & Coordinate Status */}
-      <div className="bg-slate-50 border-b border-slate-200 px-4 py-1.5 flex flex-wrap items-center gap-2 text-xs">
-        {/* Undo & Redo Toolbar */}
-        {onUndo && onRedo && (
-          <div className="flex items-center gap-0.5 bg-slate-200/70 p-0.5 rounded-md border border-slate-200/90">
-            <button
-              onClick={onUndo}
-              disabled={!canUndo}
-              className="p-1 rounded text-slate-700 hover:bg-white hover:text-indigo-600 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-700 transition-all shadow-2xs cursor-pointer disabled:cursor-not-allowed"
-              title="Undo / Urungkan Perubahan (Ctrl+Z)"
-            >
-              <Undo2 className="w-3.5 h-3.5" />
-            </button>
-            <button
-              onClick={onRedo}
-              disabled={!canRedo}
-              className="p-1 rounded text-slate-700 hover:bg-white hover:text-indigo-600 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-700 transition-all shadow-2xs cursor-pointer disabled:cursor-not-allowed"
-              title="Redo / Ulangi Perubahan (Ctrl+Y atau Ctrl+Shift+Z)"
-            >
-              <Redo2 className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        )}
-
-        {/* Cell Coordinate Box: e.g. B4 */}
-        <div className="flex items-center gap-1.5 text-slate-700 font-mono font-bold px-2.5 py-1 bg-white border border-slate-300 rounded min-w-[70px] justify-center shadow-2xs">
-          {selectedCell ? (
-            <span>
-              {columnIndexToLetter(selectedCell.colIndex)}
-              {selectedCell.rowIndex + 1}
-            </span>
-          ) : (
-            <span className="text-slate-400">A1</span>
+      {/* Dedicated Excel Formula Bar & Status */}
+      <div className="bg-slate-50/90 border-b border-slate-200 px-4 py-2 flex flex-col gap-2">
+        {/* Top Primary Row: Name Box + Actions + Dedicated Formula Input Field + Live Preview */}
+        <div className="flex items-center gap-2">
+          {/* Undo & Redo Toolbar */}
+          {onUndo && onRedo && (
+            <div className="flex items-center gap-0.5 bg-slate-200/70 p-0.5 rounded-md border border-slate-200/90 shrink-0">
+              <button
+                onClick={onUndo}
+                disabled={!canUndo}
+                className="p-1 rounded text-slate-700 hover:bg-white hover:text-blue-600 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-700 transition-all shadow-2xs cursor-pointer disabled:cursor-not-allowed"
+                title="Undo / Urungkan Perubahan (Ctrl+Z)"
+              >
+                <Undo2 className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={onRedo}
+                disabled={!canRedo}
+                className="p-1 rounded text-slate-700 hover:bg-white hover:text-blue-600 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-700 transition-all shadow-2xs cursor-pointer disabled:cursor-not-allowed"
+                title="Redo / Ulangi Perubahan (Ctrl+Y atau Ctrl+Shift+Z)"
+              >
+                <Redo2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
           )}
-        </div>
 
-        <div className="text-slate-300">|</div>
-
-        {/* Formula Input Box */}
-        <div className="flex-1 min-w-[240px] flex items-center gap-2">
-          <span className="text-slate-500 font-serif italic text-xs select-none font-bold">
-            fx
-          </span>
-          <input
-            ref={formulaInputRef}
-            type="text"
-            readOnly={!selectedCell}
-            value={formulaBarValue}
-            onChange={(e) => {
-              const val = e.target.value;
-              setFormulaBarValue(val);
-              updateFormulaBarAutocomplete(val, formulaInputRef.current);
-            }}
-            onFocus={(e) => {
-              if (e.target.value.startsWith('=')) {
-                updateFormulaBarAutocomplete(e.target.value, e.target);
-              }
-            }}
-            onClick={(e) => {
-              if (formulaBarValue.startsWith('=')) {
-                updateFormulaBarAutocomplete(formulaBarValue, e.currentTarget);
-              }
-            }}
-            onKeyDown={handleFormulaBarKeyDown}
-            onBlur={() => {
-              setTimeout(() => {
-                if (selectedCell) {
-                  onUpdateCell(selectedCell.rowId, selectedCell.colKey, formulaBarValue);
-                }
-                clearAutocomplete();
-              }, 180);
-            }}
-            placeholder={
-              selectedCell
-                ? 'Ketik nilai atau rumus (contoh: =SUM(F1:F10), =AVG(F1:F5), =F2 * G2, =[Quantity]*[UnitPrice])...'
-                : 'Pilih sel mana pun untuk melihat atau menyunting data / rumus'
-            }
-            className="w-full bg-white border border-slate-200 rounded px-2.5 py-1 text-xs text-slate-800 font-mono outline-hidden focus:border-indigo-500 focus:ring-1 focus:ring-indigo-400 shadow-2xs"
-          />
-        </div>
-
-        {/* Quick Arithmetic & Formula Helper Buttons */}
-        <div className="flex items-center gap-1">
-          <div className="flex items-center gap-0.5 bg-slate-200/70 p-0.5 rounded-md">
-            <button
-              onClick={() => handleInsertQuickFormula('SUM')}
-              disabled={!selectedCell}
-              className="px-2 py-0.5 text-[11px] font-mono font-semibold bg-white text-slate-700 rounded hover:bg-blue-50 hover:text-blue-700 disabled:opacity-40 transition-colors shadow-2xs cursor-pointer"
-              title="Sisipkan fungsi =SUM(range)"
-            >
-              SUM
-            </button>
-            <button
-              onClick={() => handleInsertQuickFormula('AVG')}
-              disabled={!selectedCell}
-              className="px-2 py-0.5 text-[11px] font-mono font-semibold bg-white text-slate-700 rounded hover:bg-emerald-50 hover:text-emerald-700 disabled:opacity-40 transition-colors shadow-2xs cursor-pointer"
-              title="Sisipkan fungsi =AVG(range)"
-            >
-              AVG
-            </button>
-            <button
-              onClick={() => handleInsertQuickFormula('COUNT')}
-              disabled={!selectedCell}
-              className="px-2 py-0.5 text-[11px] font-mono font-semibold bg-white text-slate-700 rounded hover:bg-amber-50 hover:text-amber-700 disabled:opacity-40 transition-colors shadow-2xs cursor-pointer"
-              title="Sisipkan fungsi =COUNT(range)"
-            >
-              COUNT
-            </button>
-            <button
-              onClick={() => handleInsertQuickFormula('MULTIPLY')}
-              disabled={!selectedCell}
-              className="px-2 py-0.5 text-[11px] font-mono font-semibold bg-white text-slate-700 rounded hover:bg-teal-50 hover:text-teal-700 disabled:opacity-40 transition-colors shadow-2xs cursor-pointer"
-              title="Sisipkan rumus perkalian kolom: =[Quantity] * [UnitPrice]"
-            >
-              QTY×PRICE
-            </button>
+          {/* Cell Coordinate Box: e.g. A1, F5 */}
+          <div
+            className="flex items-center gap-1.5 text-blue-950 font-mono font-bold px-2.5 py-1 bg-white border border-slate-300 rounded-md min-w-[75px] justify-center shadow-2xs text-xs shrink-0 select-none cursor-default"
+            title={selectedCell ? `Sel Aktif: Kolom ${columnIndexToLetter(selectedCell.colIndex)}, Baris ${selectedCell.rowIndex + 1}` : 'Sel Aktif: A1'}
+          >
+            <span>
+              {selectedCell
+                ? `${columnIndexToLetter(selectedCell.colIndex)}${selectedCell.rowIndex + 1}`
+                : 'A1'}
+            </span>
           </div>
 
-          <button
-            onClick={() => setShowFormulaHelp(true)}
-            className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium text-slate-700 bg-white hover:bg-blue-50/60 hover:text-blue-700 border border-slate-200 hover:border-blue-200 rounded-md transition-colors shadow-2xs cursor-pointer"
-            title="Lihat panduan sintaks rumus spreadsheet"
-          >
-            <HelpCircle className="w-3.5 h-3.5 text-blue-500" />
-            <span>Panduan Rumus</span>
-          </button>
+          {/* Formula Function Controls (Cancel & Accept buttons + fx badge) */}
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              type="button"
+              onClick={handleCancelFormulaBar}
+              className="p-1 rounded hover:bg-rose-50 hover:text-rose-600 text-slate-400 transition-colors cursor-pointer"
+              title="Batalkan Perubahan Rumus (Esc)"
+            >
+              <X className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onClick={handleCommitFormulaBar}
+              className="p-1 rounded hover:bg-emerald-50 hover:text-emerald-700 text-slate-400 transition-colors cursor-pointer"
+              title="Terapkan Rumus ke Sel (Enter)"
+            >
+              <Check className="w-4 h-4 text-emerald-600" />
+            </button>
+            <div className="h-4 w-px bg-slate-300 mx-0.5" />
+            <div
+              className="flex items-center justify-center w-6 h-6 rounded bg-blue-50 border border-blue-200/80 text-blue-700 font-serif italic text-xs font-bold select-none"
+              title="Bilah Rumus Excel NexusSheet (Dedicated Formula Field)"
+            >
+              fx
+            </div>
+          </div>
 
-          <button
-            onClick={() => openValidationModal()}
-            className={`flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium border rounded-md transition-colors shadow-2xs cursor-pointer ${
-              validationErrors.size > 0
-                ? 'text-rose-700 bg-rose-50 border-rose-200 hover:bg-rose-100'
-                : 'text-slate-700 bg-white border-slate-200 hover:bg-slate-50'
-            }`}
-            title="Atur aturan validasi data kolom (angka, unik, rentang, dll.)"
-          >
-            <ShieldCheck className={`w-3.5 h-3.5 ${validationErrors.size > 0 ? 'text-rose-600' : 'text-slate-500'}`} />
-            <span>Validasi Kolom</span>
-            {validationErrors.size > 0 && (
-              <span className="px-1.5 py-0.2 rounded-full bg-rose-600 text-white text-[10px] font-bold">
-                {validationErrors.size}
-              </span>
+          {/* Dedicated Formula Input Field */}
+          <div className="flex-1 relative flex items-center min-w-[280px]">
+            <input
+              ref={formulaInputRef}
+              type="text"
+              value={formulaBarValue}
+              onChange={(e) => {
+                const val = e.target.value;
+                setFormulaBarValue(val);
+                updateFormulaBarAutocomplete(val, formulaInputRef.current);
+              }}
+              onFocus={handleFormulaBarFocus}
+              onClick={(e) => {
+                if (formulaBarValue.startsWith('=')) {
+                  updateFormulaBarAutocomplete(formulaBarValue, e.currentTarget);
+                }
+              }}
+              onKeyDown={handleFormulaBarKeyDown}
+              placeholder="Ketik nilai atau rumus Excel (contoh: =SUM(A1:A5), =AVG(F1:F10), =F2 * G2, =[Quantity]*[UnitPrice])..."
+              className="w-full bg-white border border-slate-300 rounded-lg pl-3 pr-32 py-1.5 text-xs text-slate-900 font-mono outline-hidden focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all shadow-2xs placeholder:text-slate-400"
+            />
+
+            {/* Live Calculation Preview Badge */}
+            {liveFormulaPreview && (
+              <div
+                className={`absolute right-2 px-2 py-0.5 rounded text-[11px] font-mono font-bold flex items-center gap-1 border shadow-2xs animate-in fade-in duration-150 ${
+                  liveFormulaPreview.isError
+                    ? 'bg-rose-50 text-rose-700 border-rose-200'
+                    : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                }`}
+                title={`Kalkulasi instan: ${liveFormulaPreview.value}`}
+              >
+                <span className="text-[10px] opacity-75 font-sans font-semibold">Hasil:</span>
+                <span>{liveFormulaPreview.value}</span>
+              </div>
             )}
-          </button>
+          </div>
         </div>
 
-        {selectedRowIds.length > 0 && (
-          <button
-            onClick={() => {
-              onDeleteRows(selectedRowIds);
-              setSelectedRowIds([]);
-            }}
-            className="flex items-center gap-1 text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 px-2 py-1 rounded text-[11px] font-medium transition-colors"
-          >
-            <Trash2 className="w-3 h-3" />
-            <span>Hapus ({selectedRowIds.length})</span>
-          </button>
-        )}
+        {/* Bottom Secondary Row: Quick Excel Functions + Guide buttons */}
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5 text-xs">
+          <div className="flex items-center gap-1">
+            <span className="text-[11px] font-semibold text-slate-500 mr-1 flex items-center gap-1">
+              <span>Sisipkan Rumus Cepat:</span>
+            </span>
+            <div className="flex items-center gap-1 bg-slate-200/60 p-0.5 rounded-md">
+              <button
+                type="button"
+                onClick={() => handleInsertQuickFormula('SUM')}
+                className="px-2 py-0.5 text-[11px] font-mono font-semibold bg-white text-slate-700 rounded hover:bg-blue-50 hover:text-blue-700 transition-colors shadow-2xs cursor-pointer"
+                title="Sisipkan rumus penjumlahan: =SUM(range)"
+              >
+                =SUM(range)
+              </button>
+              <button
+                type="button"
+                onClick={() => handleInsertQuickFormula('AVG')}
+                className="px-2 py-0.5 text-[11px] font-mono font-semibold bg-white text-slate-700 rounded hover:bg-emerald-50 hover:text-emerald-700 transition-colors shadow-2xs cursor-pointer"
+                title="Sisipkan rumus rata-rata: =AVG(range)"
+              >
+                =AVG(range)
+              </button>
+              <button
+                type="button"
+                onClick={() => handleInsertQuickFormula('COUNT')}
+                className="px-2 py-0.5 text-[11px] font-mono font-semibold bg-white text-slate-700 rounded hover:bg-amber-50 hover:text-amber-700 transition-colors shadow-2xs cursor-pointer"
+                title="Sisipkan rumus total baris: =COUNT(range)"
+              >
+                =COUNT(range)
+              </button>
+              <button
+                type="button"
+                onClick={() => handleInsertQuickFormula('MIN')}
+                className="px-2 py-0.5 text-[11px] font-mono font-semibold bg-white text-slate-700 rounded hover:bg-sky-50 hover:text-sky-700 transition-colors shadow-2xs cursor-pointer"
+                title="Sisipkan nilai terendah: =MIN(range)"
+              >
+                =MIN(range)
+              </button>
+              <button
+                type="button"
+                onClick={() => handleInsertQuickFormula('MAX')}
+                className="px-2 py-0.5 text-[11px] font-mono font-semibold bg-white text-slate-700 rounded hover:bg-rose-50 hover:text-rose-700 transition-colors shadow-2xs cursor-pointer"
+                title="Sisipkan nilai tertinggi: =MAX(range)"
+              >
+                =MAX(range)
+              </button>
+              <button
+                type="button"
+                onClick={() => handleInsertQuickFormula('MULTIPLY')}
+                className="px-2 py-0.5 text-[11px] font-mono font-semibold bg-white text-slate-700 rounded hover:bg-teal-50 hover:text-teal-700 transition-colors shadow-2xs cursor-pointer"
+                title="Sisipkan rumus perkalian kolom: =[Quantity] * [UnitPrice]"
+              >
+                =[Qty]*[Price]
+              </button>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setShowFormulaHelp(true)}
+              className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium text-slate-700 bg-white hover:bg-blue-50/60 hover:text-blue-700 border border-slate-200 hover:border-blue-200 rounded-md transition-colors shadow-2xs cursor-pointer"
+              title="Lihat panduan sintaks rumus spreadsheet"
+            >
+              <HelpCircle className="w-3.5 h-3.5 text-blue-500" />
+              <span>Panduan Rumus</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => openValidationModal()}
+              className={`flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium border rounded-md transition-colors shadow-2xs cursor-pointer ${
+                validationErrors.size > 0
+                  ? 'text-rose-700 bg-rose-50 border-rose-200 hover:bg-rose-100'
+                  : 'text-slate-700 bg-white border-slate-200 hover:bg-slate-50'
+              }`}
+              title="Atur aturan validasi data kolom"
+            >
+              <ShieldCheck className={`w-3.5 h-3.5 ${validationErrors.size > 0 ? 'text-rose-600' : 'text-slate-500'}`} />
+              <span>Validasi Kolom</span>
+              {validationErrors.size > 0 && (
+                <span className="px-1.5 py-0.2 rounded-full bg-rose-600 text-white text-[10px] font-bold">
+                  {validationErrors.size}
+                </span>
+              )}
+            </button>
+
+            {selectedRowIds.length > 0 && (
+              <button
+                onClick={() => {
+                  onDeleteRows(selectedRowIds);
+                  setSelectedRowIds([]);
+                }}
+                className="flex items-center gap-1 text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors cursor-pointer"
+              >
+                <Trash2 className="w-3 h-3" />
+                <span>Hapus ({selectedRowIds.length})</span>
+              </button>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Main Grid Viewport */}
-      <div className="flex-1 overflow-x-auto overflow-y-auto bg-slate-100/50">
+      <div ref={gridScrollRef} className="flex-1 overflow-x-auto overflow-y-auto bg-slate-100/50 scroll-smooth">
         <table
           style={{ minWidth: `${Math.max(1200, visibleColumns.reduce((sum, c) => sum + (c.width || 150), 60))}px` }}
           className="border-collapse table-fixed w-full text-xs text-left bg-white"
@@ -731,12 +917,20 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
                     <div className="flex flex-col gap-0.5">
                       {/* Top Category Badge & Validation Indicator */}
                       <div className="flex items-center justify-between gap-1">
-                        <span
-                          className="text-[9px] font-medium uppercase tracking-wider text-slate-400 truncate max-w-[90px]"
-                          title={`Kategori: ${col.category}`}
-                        >
-                          {col.category}
-                        </span>
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span
+                            className="font-mono text-[10px] font-bold text-blue-700 bg-blue-100/80 border border-blue-200/90 px-1.5 py-0.2 rounded shadow-2xs select-none shrink-0"
+                            title={`Kolom ${columnIndexToLetter(cIdx)} (${col.name})`}
+                          >
+                            {columnIndexToLetter(cIdx)}
+                          </span>
+                          <span
+                            className="text-[9px] font-medium uppercase tracking-wider text-slate-400 truncate max-w-[80px]"
+                            title={`Kategori: ${col.category}`}
+                          >
+                            {col.category}
+                          </span>
+                        </div>
 
                         <div className="flex items-center gap-0.5">
                           {col.validation && col.validation.type !== 'none' && (
@@ -846,6 +1040,12 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
                         selectedCell?.rowId === row._id && selectedCell?.colKey === col.key;
                       const isEditing =
                         editingCell?.rowId === row._id && editingCell?.colKey === col.key;
+                      const isRangeReferenced =
+                        activeFormulaRange &&
+                        cIdx >= activeFormulaRange.minCol &&
+                        cIdx <= activeFormulaRange.maxCol &&
+                        rIdx >= activeFormulaRange.minRow &&
+                        rIdx <= activeFormulaRange.maxRow;
                       const rawVal = row[col.key];
                       const evalVal = isFormula(rawVal) ? evaluatedMap.get(`${row._id}:${col.key}`) : rawVal;
                       const cellError = validationErrors.get(`${row._id}:${col.key}`);
@@ -896,6 +1096,8 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
                           } ${
                             isCellActive
                               ? 'outline-2 outline-blue-600 outline-offset-[-2px] bg-blue-50/25'
+                              : isRangeReferenced
+                              ? 'ring-2 ring-inset ring-blue-500/80 bg-blue-50/40 font-semibold'
                               : ''
                           }`}
                         >
@@ -1457,9 +1659,9 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
         </div>
       )}
 
-      {/* Grid Bottom Bar: Add Row & Stats */}
-      <div className="bg-white border-t border-slate-200 px-4 py-2 flex items-center justify-between text-xs text-slate-600">
-        <div className="flex items-center gap-3">
+      {/* Grid Bottom Bar: Add Row, Stats & Horizontal Column Scroll Navigator */}
+      <div className="bg-white border-t border-slate-200 px-4 py-2 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-slate-600">
+        <div className="flex flex-wrap items-center gap-3">
           <button
             onClick={onAddRow}
             className="flex items-center gap-1 px-3 py-1 bg-blue-50/80 hover:bg-blue-100/90 text-blue-900 border border-blue-200/90 rounded-md font-semibold transition-colors shadow-2xs cursor-pointer"
@@ -1484,8 +1686,45 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
           )}
         </div>
 
-        <div className="text-[11px] text-slate-400">
-          Tip: Segitiga merah di pojok kanan atas sel menandakan data tidak memenuhi aturan validasi kolom
+        {/* Horizontal Scroll Controls for wide / multi-sheet joined tables */}
+        <div className="flex items-center gap-2 self-end sm:self-auto">
+          <span className="text-[11px] text-slate-500 font-medium">Geser Kolom:</span>
+          <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg border border-slate-200">
+            <button
+              type="button"
+              onClick={() => handleScrollGrid('start')}
+              className="px-2 py-0.5 text-[11px] font-semibold bg-white hover:bg-slate-50 text-slate-700 rounded shadow-2xs border border-slate-200 transition-colors cursor-pointer"
+              title="Geser langsung ke kolom pertama (paling kiri)"
+            >
+              ⏮ Awal
+            </button>
+            <button
+              type="button"
+              onClick={() => handleScrollGrid('left')}
+              className="px-2.5 py-0.5 text-[11px] font-semibold bg-white hover:bg-slate-50 text-slate-700 rounded shadow-2xs border border-slate-200 flex items-center gap-1 transition-colors cursor-pointer"
+              title="Geser tampilan kolom ke arah kiri"
+            >
+              <ChevronLeft className="w-3 h-3" />
+              <span>Kiri</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleScrollGrid('right')}
+              className="px-2.5 py-0.5 text-[11px] font-semibold bg-white hover:bg-slate-50 text-slate-700 rounded shadow-2xs border border-slate-200 flex items-center gap-1 transition-colors cursor-pointer"
+              title="Geser tampilan kolom ke arah kanan untuk melihat seluruh data sel"
+            >
+              <span>Kanan</span>
+              <ChevronRight className="w-3 h-3" />
+            </button>
+            <button
+              type="button"
+              onClick={() => handleScrollGrid('end')}
+              className="px-2 py-0.5 text-[11px] font-semibold bg-white hover:bg-slate-50 text-slate-700 rounded shadow-2xs border border-slate-200 transition-colors cursor-pointer"
+              title="Geser langsung ke kolom terakhir (paling kanan)"
+            >
+              Ujung ⏭
+            </button>
+          </div>
         </div>
       </div>
 
