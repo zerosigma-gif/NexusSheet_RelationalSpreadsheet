@@ -625,7 +625,7 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
             <button
               onClick={() => handleInsertQuickFormula('SUM')}
               disabled={!selectedCell}
-              className="px-2 py-0.5 text-[11px] font-mono font-semibold bg-white text-slate-700 rounded hover:bg-slate-100 hover:text-indigo-600 disabled:opacity-40 transition-colors shadow-2xs"
+              className="px-2 py-0.5 text-[11px] font-mono font-semibold bg-white text-slate-700 rounded hover:bg-blue-50 hover:text-blue-700 disabled:opacity-40 transition-colors shadow-2xs cursor-pointer"
               title="Sisipkan fungsi =SUM(range)"
             >
               SUM
@@ -633,7 +633,7 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
             <button
               onClick={() => handleInsertQuickFormula('AVG')}
               disabled={!selectedCell}
-              className="px-2 py-0.5 text-[11px] font-mono font-semibold bg-white text-slate-700 rounded hover:bg-slate-100 hover:text-indigo-600 disabled:opacity-40 transition-colors shadow-2xs"
+              className="px-2 py-0.5 text-[11px] font-mono font-semibold bg-white text-slate-700 rounded hover:bg-emerald-50 hover:text-emerald-700 disabled:opacity-40 transition-colors shadow-2xs cursor-pointer"
               title="Sisipkan fungsi =AVG(range)"
             >
               AVG
@@ -641,7 +641,7 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
             <button
               onClick={() => handleInsertQuickFormula('COUNT')}
               disabled={!selectedCell}
-              className="px-2 py-0.5 text-[11px] font-mono font-semibold bg-white text-slate-700 rounded hover:bg-slate-100 hover:text-indigo-600 disabled:opacity-40 transition-colors shadow-2xs"
+              className="px-2 py-0.5 text-[11px] font-mono font-semibold bg-white text-slate-700 rounded hover:bg-amber-50 hover:text-amber-700 disabled:opacity-40 transition-colors shadow-2xs cursor-pointer"
               title="Sisipkan fungsi =COUNT(range)"
             >
               COUNT
@@ -649,7 +649,7 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
             <button
               onClick={() => handleInsertQuickFormula('MULTIPLY')}
               disabled={!selectedCell}
-              className="px-2 py-0.5 text-[11px] font-mono font-semibold bg-white text-slate-700 rounded hover:bg-slate-100 hover:text-slate-900 disabled:opacity-40 transition-colors shadow-2xs cursor-pointer"
+              className="px-2 py-0.5 text-[11px] font-mono font-semibold bg-white text-slate-700 rounded hover:bg-teal-50 hover:text-teal-700 disabled:opacity-40 transition-colors shadow-2xs cursor-pointer"
               title="Sisipkan rumus perkalian kolom: =[Quantity] * [UnitPrice]"
             >
               QTY×PRICE
@@ -658,10 +658,10 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
 
           <button
             onClick={() => setShowFormulaHelp(true)}
-            className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-md transition-colors shadow-2xs cursor-pointer"
+            className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium text-slate-700 bg-white hover:bg-blue-50/60 hover:text-blue-700 border border-slate-200 hover:border-blue-200 rounded-md transition-colors shadow-2xs cursor-pointer"
             title="Lihat panduan sintaks rumus spreadsheet"
           >
-            <HelpCircle className="w-3.5 h-3.5 text-slate-500" />
+            <HelpCircle className="w-3.5 h-3.5 text-blue-500" />
             <span>Panduan Rumus</span>
           </button>
 
@@ -745,16 +745,16 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
                                 e.stopPropagation();
                                 openValidationModal(col.key);
                               }}
-                              className="text-[9px] bg-slate-100 text-slate-700 border border-slate-200 font-mono font-medium px-1 rounded flex items-center gap-0.5 hover:bg-slate-200 transition-colors"
+                              className="text-[9px] bg-amber-50 text-amber-900 border border-amber-200/80 font-mono font-medium px-1 rounded flex items-center gap-0.5 hover:bg-amber-100 transition-colors"
                               title={`Validasi Aktif: ${getValidationRuleLabel(col.validation.type)} (Klik untuk atur)`}
                             >
-                              <ShieldCheck className="w-2.5 h-2.5 text-slate-500" />
+                              <ShieldCheck className="w-2.5 h-2.5 text-amber-600" />
                               <span className="truncate max-w-[45px]">{col.validation.type}</span>
                             </button>
                           )}
                           {col.isPrimaryKey && (
                             <span
-                              className="text-[9px] font-mono bg-slate-100 text-slate-800 border border-slate-200 font-bold px-1 rounded"
+                              className="text-[9px] font-mono bg-blue-50 text-blue-800 border border-blue-200/90 font-bold px-1 rounded shadow-2xs"
                               title="Primary Key Sheet"
                             >
                               PK
@@ -762,10 +762,10 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
                           )}
                           {col.type === 'relation' && (
                             <span
-                              className="text-[9px] font-mono bg-slate-100 text-slate-700 border border-slate-200 font-semibold px-1 rounded flex items-center gap-0.5"
+                              className="text-[9px] font-mono bg-teal-50 text-teal-800 border border-teal-200/90 font-bold px-1 rounded shadow-2xs flex items-center gap-0.5"
                               title="Foreign Key Relational"
                             >
-                              <Link2 className="w-2.5 h-2.5 text-slate-500" />
+                              <Link2 className="w-2.5 h-2.5 text-teal-600" />
                               FK
                             </span>
                           )}
@@ -895,7 +895,7 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
                               : ''
                           } ${
                             isCellActive
-                              ? 'outline-2 outline-indigo-600 outline-offset-[-2px] bg-indigo-50/30'
+                              ? 'outline-2 outline-blue-600 outline-offset-[-2px] bg-blue-50/25'
                               : ''
                           }`}
                         >
@@ -948,7 +948,7 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
                                     handleSaveEdit();
                                   }, 180);
                                 }}
-                                className="w-full px-1.5 py-0.5 border border-indigo-500 rounded bg-white text-xs text-slate-900 outline-hidden font-mono shadow-2xs"
+                                className="w-full px-1.5 py-0.5 border border-blue-500 rounded bg-white text-xs text-slate-900 outline-hidden font-mono shadow-xs"
                               />
                             </div>
                           ) : col.type === 'relation' ? (
@@ -958,10 +958,10 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
                                 e.stopPropagation();
                                 showRelationalPopover(e, col, rawVal);
                               }}
-                              className="inline-flex items-center gap-1.5 text-indigo-600 hover:text-indigo-800 font-semibold cursor-pointer group/link hover:underline py-0.5"
+                              className="inline-flex items-center gap-1.5 text-blue-700 hover:text-blue-900 font-semibold cursor-pointer group/link hover:underline py-0.5"
                               title="Klik untuk membuka preview relasi dari sheet lain"
                             >
-                              <Link2 className="w-3 h-3 text-indigo-400 group-hover/link:text-indigo-600" />
+                              <Link2 className="w-3 h-3 text-teal-600 group-hover/link:text-teal-700" />
                               <span>{String(rawVal || '—')}</span>
                             </div>
                           ) : isFormula(rawVal) ? (
@@ -1462,9 +1462,9 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
         <div className="flex items-center gap-3">
           <button
             onClick={onAddRow}
-            className="flex items-center gap-1 px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-md font-medium transition-colors"
+            className="flex items-center gap-1 px-3 py-1 bg-blue-50/80 hover:bg-blue-100/90 text-blue-900 border border-blue-200/90 rounded-md font-semibold transition-colors shadow-2xs cursor-pointer"
           >
-            <Plus className="w-3.5 h-3.5 text-slate-600" />
+            <Plus className="w-3.5 h-3.5 text-blue-600" />
             <span>Tambah Baris Baru</span>
           </button>
           <span className="text-slate-300">|</span>

@@ -282,7 +282,7 @@ export const FilterStudioView: React.FC<FilterStudioViewProps> = ({
 
             <button
               type="submit"
-              className="w-full py-2 bg-slate-900 text-white font-semibold rounded-lg hover:bg-slate-800 transition-colors shadow-xs"
+              className="w-full py-2 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 transition-colors shadow-xs cursor-pointer"
             >
               Tambahkan ke Rantai Filter
             </button>

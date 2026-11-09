@@ -63,15 +63,15 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="flex items-center justify-between h-16 gap-4">
           {/* Zone 1: Brand Wordmark */}
           <div className="flex items-center gap-3 shrink-0">
-            <div className="w-9 h-9 rounded-lg bg-slate-900 text-white flex items-center justify-center shadow-xs">
-              <FileSpreadsheet className="w-5 h-5 text-slate-100" />
+            <div className="w-9 h-9 rounded-lg bg-slate-900 border border-slate-700/60 text-white flex items-center justify-center shadow-xs">
+              <FileSpreadsheet className="w-5 h-5 text-emerald-400" />
             </div>
             <div>
               <div className="flex items-center gap-2">
                 <span className="text-base font-bold tracking-tight text-slate-900">
                   NexusSheet
                 </span>
-                <span className="text-xs font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded text-[11px]">
+                <span className="text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200/80 px-2 py-0.5 rounded text-[11px]">
                   Relational Studio
                 </span>
               </div>
@@ -82,55 +82,55 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
 
           {/* Zone 2: Navigation Tabs */}
-          <nav className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg">
+          <nav className="flex items-center gap-1 bg-slate-100/90 border border-slate-200/70 p-1 rounded-lg">
             <button
               onClick={() => setActiveTab('spreadsheet')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-all whitespace-nowrap shrink-0 ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-all whitespace-nowrap shrink-0 cursor-pointer ${
                 activeTab === 'spreadsheet'
-                  ? 'bg-white text-slate-900 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-white text-blue-700 shadow-xs border border-slate-200/80 font-bold'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
               }`}
             >
-              <Layers className="w-3.5 h-3.5 text-slate-500" />
+              <Layers className={`w-3.5 h-3.5 ${activeTab === 'spreadsheet' ? 'text-blue-600' : 'text-slate-400'}`} />
               <span>Spreadsheet Grid</span>
             </button>
 
             <button
               onClick={() => setActiveTab('charts')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-all whitespace-nowrap shrink-0 ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-all whitespace-nowrap shrink-0 cursor-pointer ${
                 activeTab === 'charts'
-                  ? 'bg-white text-slate-900 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-white text-emerald-700 shadow-xs border border-slate-200/80 font-bold'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
               }`}
             >
-              <BarChart3 className="w-3.5 h-3.5 text-slate-500" />
+              <BarChart3 className={`w-3.5 h-3.5 ${activeTab === 'charts' ? 'text-emerald-600' : 'text-slate-400'}`} />
               <span>Visual Analytics</span>
             </button>
 
             <button
               onClick={() => setActiveTab('relations')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-all whitespace-nowrap shrink-0 ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-all whitespace-nowrap shrink-0 cursor-pointer ${
                 activeTab === 'relations'
-                  ? 'bg-white text-slate-900 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-white text-indigo-700 shadow-xs border border-slate-200/80 font-bold'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
               }`}
             >
-              <GitFork className="w-3.5 h-3.5 text-slate-500" />
+              <GitFork className={`w-3.5 h-3.5 ${activeTab === 'relations' ? 'text-indigo-600' : 'text-slate-400'}`} />
               <span>Relational & Join</span>
             </button>
 
             <button
               onClick={() => setActiveTab('filters')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-all whitespace-nowrap shrink-0 ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-all whitespace-nowrap shrink-0 cursor-pointer ${
                 activeTab === 'filters'
-                  ? 'bg-white text-slate-900 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-white text-amber-700 shadow-xs border border-slate-200/80 font-bold'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
               }`}
             >
-              <Filter className="w-3.5 h-3.5 text-slate-500" />
+              <Filter className={`w-3.5 h-3.5 ${activeTab === 'filters' ? 'text-amber-600' : 'text-slate-400'}`} />
               <span>Filter Studio</span>
               {filterCount > 0 && (
-                <span className="w-4 h-4 rounded-full bg-slate-900 text-white text-[10px] flex items-center justify-center font-bold">
+                <span className="w-4 h-4 rounded-full bg-blue-600 text-white text-[10px] flex items-center justify-center font-bold">
                   {filterCount}
                 </span>
               )}
@@ -145,7 +145,7 @@ export const Header: React.FC<HeaderProps> = ({
                 <button
                   onClick={onUndo}
                   disabled={!canUndo}
-                  className="p-1 rounded text-slate-700 hover:bg-white hover:text-indigo-600 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-700 transition-all shadow-2xs cursor-pointer disabled:cursor-not-allowed"
+                  className="p-1 rounded text-slate-700 hover:bg-white hover:text-blue-600 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-700 transition-all shadow-2xs cursor-pointer disabled:cursor-not-allowed"
                   title="Undo / Urungkan (Ctrl+Z)"
                 >
                   <Undo2 className="w-3.5 h-3.5" />
@@ -153,7 +153,7 @@ export const Header: React.FC<HeaderProps> = ({
                 <button
                   onClick={onRedo}
                   disabled={!canRedo}
-                  className="p-1 rounded text-slate-700 hover:bg-white hover:text-indigo-600 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-700 transition-all shadow-2xs cursor-pointer disabled:cursor-not-allowed"
+                  className="p-1 rounded text-slate-700 hover:bg-white hover:text-blue-600 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-700 transition-all shadow-2xs cursor-pointer disabled:cursor-not-allowed"
                   title="Redo / Ulangi (Ctrl+Y atau Ctrl+Shift+Z)"
                 >
                   <Redo2 className="w-3.5 h-3.5" />
@@ -171,10 +171,10 @@ export const Header: React.FC<HeaderProps> = ({
 
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors shadow-2xs whitespace-nowrap"
+              className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-blue-50/50 hover:text-blue-700 hover:border-blue-200 transition-colors shadow-2xs whitespace-nowrap cursor-pointer"
               title="Import file Excel (.xlsx, .xls) atau CSV"
             >
-              <Upload className="w-3.5 h-3.5 text-slate-600" />
+              <Upload className="w-3.5 h-3.5 text-blue-600" />
               <span>Import Excel/CSV</span>
             </button>
 
@@ -182,7 +182,7 @@ export const Header: React.FC<HeaderProps> = ({
             <div className="relative">
               <button
                 onClick={() => setExportMenuOpen(!exportMenuOpen)}
-                className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-white bg-slate-900 rounded-lg hover:bg-slate-800 transition-colors shadow-xs whitespace-nowrap"
+                className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-xs whitespace-nowrap cursor-pointer"
               >
                 <Download className="w-3.5 h-3.5" />
                 <span>Export Data</span>

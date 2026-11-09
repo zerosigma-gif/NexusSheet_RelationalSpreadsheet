@@ -552,13 +552,13 @@ export const RelationalExplorer: React.FC<RelationalExplorerProps> = ({
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             {/* Box 1: Primary Sheet (Sheet 1) */}
-            <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
-              <div className="flex items-center justify-between pb-2 border-b border-slate-200">
-                <span className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
-                  <span className="w-5 h-5 rounded-full bg-slate-900 text-white flex items-center justify-center text-[10px] font-bold">1</span>
+            <div className="p-4 bg-blue-50/40 border border-blue-200/90 rounded-xl space-y-3">
+              <div className="flex items-center justify-between pb-2 border-b border-blue-200/70">
+                <span className="font-bold text-blue-950 text-xs flex items-center gap-1.5">
+                  <span className="w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center text-[10px] font-bold shadow-2xs">1</span>
                   <span>Sheet Utama (Fact/Source)</span>
                 </span>
-                <span className="text-[10px] font-mono text-slate-600 bg-slate-200/70 px-1.5 py-0.5 rounded font-semibold">
+                <span className="text-[10px] font-mono text-blue-800 bg-blue-100/70 border border-blue-200 px-1.5 py-0.5 rounded font-semibold">
                   Tabel Basis
                 </span>
               </div>
@@ -596,7 +596,7 @@ export const RelationalExplorer: React.FC<RelationalExplorerProps> = ({
               </div>
 
               {joinMode === 'three_sheets' && (
-                <div className="pt-2 border-t border-slate-200">
+                <div className="pt-2 border-t border-blue-200/70">
                   <label className="block text-[11px] font-semibold text-slate-700 mb-1">
                     Kolom Penghubung ke Sheet 3:
                   </label>
@@ -616,13 +616,13 @@ export const RelationalExplorer: React.FC<RelationalExplorerProps> = ({
             </div>
 
             {/* Box 2: Foreign Sheet (Sheet 2) */}
-            <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
-              <div className="flex items-center justify-between pb-2 border-b border-slate-200">
-                <span className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
-                  <span className="w-5 h-5 rounded-full bg-slate-900 text-white flex items-center justify-center text-[10px] font-bold">2</span>
+            <div className="p-4 bg-teal-50/40 border border-teal-200/90 rounded-xl space-y-3">
+              <div className="flex items-center justify-between pb-2 border-b border-teal-200/70">
+                <span className="font-bold text-teal-950 text-xs flex items-center gap-1.5">
+                  <span className="w-5 h-5 rounded-full bg-teal-600 text-white flex items-center justify-center text-[10px] font-bold shadow-2xs">2</span>
                   <span>Sheet Referensi Kedua</span>
                 </span>
-                <span className="text-[10px] font-mono text-slate-600 bg-slate-200/70 px-1.5 py-0.5 rounded font-semibold">
+                <span className="text-[10px] font-mono text-teal-800 bg-teal-100/70 border border-teal-200 px-1.5 py-0.5 rounded font-semibold">
                   Lookup Master
                 </span>
               </div>
@@ -659,7 +659,7 @@ export const RelationalExplorer: React.FC<RelationalExplorerProps> = ({
                 </select>
               </div>
 
-              <div className="pt-2 border-t border-slate-200">
+              <div className="pt-2 border-t border-teal-200/70">
                 <label className="block text-[11px] font-semibold text-slate-700 mb-1">Tipe Join Sheet 1 &amp; 2:</label>
                 <div className="flex items-center gap-3 text-xs">
                   <label className="flex items-center gap-1.5 cursor-pointer">
@@ -668,9 +668,9 @@ export const RelationalExplorer: React.FC<RelationalExplorerProps> = ({
                       name="joinType"
                       checked={joinType === 'left'}
                       onChange={() => setJoinType('left')}
-                      className="accent-slate-900"
+                      className="accent-teal-600"
                     />
-                    <span className="font-semibold text-slate-800">LEFT JOIN</span>
+                    <span className="font-semibold text-teal-950">LEFT JOIN</span>
                   </label>
                   <label className="flex items-center gap-1.5 cursor-pointer">
                     <input
@@ -678,9 +678,9 @@ export const RelationalExplorer: React.FC<RelationalExplorerProps> = ({
                       name="joinType"
                       checked={joinType === 'inner'}
                       onChange={() => setJoinType('inner')}
-                      className="accent-slate-900"
+                      className="accent-teal-600"
                     />
-                    <span className="font-semibold text-slate-800">INNER JOIN</span>
+                    <span className="font-semibold text-teal-950">INNER JOIN</span>
                   </label>
                 </div>
               </div>
@@ -688,13 +688,13 @@ export const RelationalExplorer: React.FC<RelationalExplorerProps> = ({
 
             {/* Box 3: Tertiary Sheet (Sheet 3) */}
             {joinMode === 'three_sheets' ? (
-              <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
-                <div className="flex items-center justify-between pb-2 border-b border-slate-200">
-                  <span className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
-                    <span className="w-5 h-5 rounded-full bg-slate-900 text-white flex items-center justify-center text-[10px] font-bold">3</span>
+              <div className="p-4 bg-amber-50/40 border border-amber-200/90 rounded-xl space-y-3">
+                <div className="flex items-center justify-between pb-2 border-b border-amber-200/70">
+                  <span className="font-bold text-amber-950 text-xs flex items-center gap-1.5">
+                    <span className="w-5 h-5 rounded-full bg-amber-600 text-white flex items-center justify-center text-[10px] font-bold shadow-2xs">3</span>
                     <span>Sheet Referensi Ketiga</span>
                   </span>
-                  <span className="text-[10px] font-mono text-slate-600 bg-slate-200/70 px-1.5 py-0.5 rounded font-semibold">
+                  <span className="text-[10px] font-mono text-amber-800 bg-amber-100/70 border border-amber-200 px-1.5 py-0.5 rounded font-semibold">
                     Master Produk / Katalog
                   </span>
                 </div>
@@ -731,7 +731,7 @@ export const RelationalExplorer: React.FC<RelationalExplorerProps> = ({
                   </select>
                 </div>
 
-                <div className="pt-2 border-t border-slate-200">
+                <div className="pt-2 border-t border-amber-200/70">
                   <label className="block text-[11px] font-semibold text-slate-700 mb-1">Tipe Join Sheet 1 &amp; 3:</label>
                   <div className="flex items-center gap-3 text-xs">
                     <label className="flex items-center gap-1.5 cursor-pointer">
@@ -740,9 +740,9 @@ export const RelationalExplorer: React.FC<RelationalExplorerProps> = ({
                         name="tertiaryJoinType"
                         checked={tertiaryJoinType === 'left'}
                         onChange={() => setTertiaryJoinType('left')}
-                        className="accent-slate-900"
+                        className="accent-amber-600"
                       />
-                      <span className="font-semibold text-slate-800">LEFT JOIN</span>
+                      <span className="font-semibold text-amber-950">LEFT JOIN</span>
                     </label>
                     <label className="flex items-center gap-1.5 cursor-pointer">
                       <input
@@ -750,9 +750,9 @@ export const RelationalExplorer: React.FC<RelationalExplorerProps> = ({
                         name="tertiaryJoinType"
                         checked={tertiaryJoinType === 'inner'}
                         onChange={() => setTertiaryJoinType('inner')}
-                        className="accent-slate-900"
+                        className="accent-amber-600"
                       />
-                      <span className="font-semibold text-slate-800">INNER JOIN</span>
+                      <span className="font-semibold text-amber-950">INNER JOIN</span>
                     </label>
                   </div>
                 </div>
@@ -802,8 +802,8 @@ export const RelationalExplorer: React.FC<RelationalExplorerProps> = ({
           <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3.5 max-h-56 overflow-y-auto">
             {/* Sheet 1 columns */}
             <div>
-              <div className="text-[11px] font-semibold text-slate-800 mb-1.5 flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-slate-500" />
+              <div className="text-[11px] font-semibold text-blue-950 mb-1.5 flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-blue-600" />
                 <span>Kolom dari {primarySheet?.name}:</span>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -816,11 +816,11 @@ export const RelationalExplorer: React.FC<RelationalExplorerProps> = ({
                       onClick={() => handleToggleColumn(primarySheet.id, c.key, c.name)}
                       className={`px-2.5 py-1 rounded-md text-xs border flex items-center gap-1.5 transition-all cursor-pointer ${
                         isChecked
-                          ? 'bg-slate-900 text-white border-slate-900 shadow-2xs font-medium'
-                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100 hover:border-slate-300 font-normal'
+                          ? 'bg-blue-600 text-white border-blue-600 shadow-2xs font-semibold'
+                          : 'bg-white text-slate-700 border-slate-200 hover:bg-blue-50/60 hover:text-blue-800 hover:border-blue-200 font-normal'
                       }`}
                     >
-                      {isChecked && <Check className="w-3 h-3 text-slate-100 shrink-0" />}
+                      {isChecked && <Check className="w-3 h-3 text-white shrink-0" />}
                       <span>{c.name}</span>
                     </button>
                   );
@@ -830,8 +830,8 @@ export const RelationalExplorer: React.FC<RelationalExplorerProps> = ({
 
             {/* Sheet 2 columns */}
             <div className="pt-2.5 border-t border-slate-200">
-              <div className="text-[11px] font-semibold text-slate-800 mb-1.5 flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-slate-500" />
+              <div className="text-[11px] font-semibold text-teal-950 mb-1.5 flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-teal-600" />
                 <span>Kolom dari {foreignSheet?.name}:</span>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -844,11 +844,11 @@ export const RelationalExplorer: React.FC<RelationalExplorerProps> = ({
                       onClick={() => handleToggleColumn(foreignSheet.id, c.key, c.name)}
                       className={`px-2.5 py-1 rounded-md text-xs border flex items-center gap-1.5 transition-all cursor-pointer ${
                         isChecked
-                          ? 'bg-slate-900 text-white border-slate-900 shadow-2xs font-medium'
-                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100 hover:border-slate-300 font-normal'
+                          ? 'bg-teal-600 text-white border-teal-600 shadow-2xs font-semibold'
+                          : 'bg-white text-slate-700 border-slate-200 hover:bg-teal-50/60 hover:text-teal-800 hover:border-teal-200 font-normal'
                       }`}
                     >
-                      {isChecked && <Check className="w-3 h-3 text-slate-100 shrink-0" />}
+                      {isChecked && <Check className="w-3 h-3 text-white shrink-0" />}
                       <span>{c.name}</span>
                     </button>
                   );
@@ -859,8 +859,8 @@ export const RelationalExplorer: React.FC<RelationalExplorerProps> = ({
             {/* Sheet 3 columns if active */}
             {joinMode === 'three_sheets' && tertiarySheet && (
               <div className="pt-2.5 border-t border-slate-200">
-                <div className="text-[11px] font-semibold text-slate-800 mb-1.5 flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-slate-500" />
+                <div className="text-[11px] font-semibold text-amber-950 mb-1.5 flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-amber-600" />
                   <span>Kolom dari {tertiarySheet.name}:</span>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -873,11 +873,11 @@ export const RelationalExplorer: React.FC<RelationalExplorerProps> = ({
                         onClick={() => handleToggleColumn(tertiarySheet.id, c.key, c.name)}
                         className={`px-2.5 py-1 rounded-md text-xs border flex items-center gap-1.5 transition-all cursor-pointer ${
                           isChecked
-                            ? 'bg-slate-900 text-white border-slate-900 shadow-2xs font-medium'
-                            : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100 hover:border-slate-300 font-normal'
+                            ? 'bg-amber-600 text-white border-amber-600 shadow-2xs font-semibold'
+                            : 'bg-white text-slate-700 border-slate-200 hover:bg-amber-50/60 hover:text-amber-800 hover:border-amber-200 font-normal'
                         }`}
                       >
-                        {isChecked && <Check className="w-3 h-3 text-slate-100 shrink-0" />}
+                        {isChecked && <Check className="w-3 h-3 text-white shrink-0" />}
                         <span>{c.name}</span>
                       </button>
                     );
@@ -898,7 +898,7 @@ export const RelationalExplorer: React.FC<RelationalExplorerProps> = ({
 
           <button
             onClick={handleRunJoin}
-            className="flex items-center gap-2 px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer"
+            className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
           >
             <Play className="w-4 h-4 fill-white" />
             <span>Eksekusi Join &amp; Tampilkan Preview</span>
@@ -912,11 +912,11 @@ export const RelationalExplorer: React.FC<RelationalExplorerProps> = ({
             <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl flex flex-col lg:flex-row lg:items-center justify-between gap-4">
               <div>
                 <div className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-slate-700 shrink-0" />
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
                   <h4 className="text-sm font-bold text-slate-900">
                     Penggabungan Berhasil: {joinedResult.rows.length} Baris Data Terpadu
                   </h4>
-                  <span className="px-2 py-0.5 rounded text-[10px] font-mono font-medium bg-slate-200 text-slate-800">
+                  <span className="px-2 py-0.5 rounded text-[10px] font-mono font-medium bg-emerald-50 text-emerald-800 border border-emerald-200">
                     {joinedResult.columns.length} Kolom
                   </span>
                 </div>
@@ -932,12 +932,12 @@ export const RelationalExplorer: React.FC<RelationalExplorerProps> = ({
                   value={masterSheetName}
                   onChange={(e) => setMasterSheetName(e.target.value)}
                   placeholder="Nama Sheet Baru..."
-                  className="px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-semibold bg-white text-slate-900 shadow-2xs focus:ring-1 focus:ring-slate-400 min-w-56"
+                  className="px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-semibold bg-white text-slate-900 shadow-2xs focus:ring-1 focus:ring-blue-400 min-w-56"
                 />
 
                 <button
                   onClick={handleSaveAsMasterSheet}
-                  className="flex items-center gap-1.5 px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-medium transition-colors shadow-2xs shrink-0 cursor-pointer"
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-colors shadow-xs shrink-0 cursor-pointer"
                   title="Simpan tabel terpadu ini menjadi tab sheet baru yang aktif di aplikasi"
                 >
                   <Plus className="w-4 h-4 text-white" />
@@ -1148,7 +1148,7 @@ export const RelationalExplorer: React.FC<RelationalExplorerProps> = ({
           <div>
             <button
               type="submit"
-              className="w-full py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold transition-colors shadow-2xs cursor-pointer"
+              className="w-full py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold transition-colors shadow-2xs cursor-pointer"
             >
               + Simpan Relasi
             </button>

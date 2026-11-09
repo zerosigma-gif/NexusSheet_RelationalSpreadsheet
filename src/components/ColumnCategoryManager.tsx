@@ -112,10 +112,10 @@ export const ColumnCategoryManager: React.FC<ColumnCategoryManagerProps> = ({
 
           <button
             onClick={() => onSelectCategory('ALL')}
-            className={`px-3 py-1 rounded-md text-[11px] font-medium transition-colors shrink-0 ${
+            className={`px-3 py-1 rounded-md text-[11px] font-medium transition-colors shrink-0 cursor-pointer ${
               selectedCategory === 'ALL'
-                ? 'bg-slate-900 text-white shadow-2xs'
-                : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 hover:border-slate-300'
+                ? 'bg-blue-600 text-white shadow-xs font-semibold'
+                : 'bg-white text-slate-700 border border-slate-200 hover:bg-blue-50/50 hover:text-blue-700 hover:border-blue-200'
             }`}
           >
             Semua ({sheet.columns.length})
@@ -124,19 +124,20 @@ export const ColumnCategoryManager: React.FC<ColumnCategoryManagerProps> = ({
           {distinctCategories.map((cat) => {
             const count = sheet.columns.filter((c) => c.category === cat).length;
             const isSelected = selectedCategory === cat;
+            const badgeStyle = getCategoryBadgeStyle(cat);
 
             return (
               <button
                 key={cat}
                 onClick={() => onSelectCategory(cat)}
-                className={`px-3 py-1 rounded-md text-[11px] font-medium transition-colors shrink-0 flex items-center gap-1.5 ${
+                className={`px-3 py-1 rounded-md text-[11px] transition-colors shrink-0 flex items-center gap-1.5 cursor-pointer ${
                   isSelected
-                    ? 'bg-slate-900 text-white shadow-2xs'
-                    : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 hover:border-slate-300'
+                    ? `${badgeStyle.bg} ${badgeStyle.text} border-2 ${badgeStyle.border} font-bold shadow-2xs ring-1 ring-blue-100`
+                    : `bg-white text-slate-700 border border-slate-200/90 hover:${badgeStyle.bg} hover:${badgeStyle.text} hover:border-slate-300 font-medium`
                 }`}
               >
                 <span>{cat}</span>
-                <span className={`text-[10px] ${isSelected ? 'text-slate-300' : 'text-slate-400'}`}>({count})</span>
+                <span className={`text-[10px] font-mono ${isSelected ? 'opacity-90 font-bold' : 'text-slate-400'}`}>({count})</span>
               </button>
             );
           })}
@@ -145,7 +146,7 @@ export const ColumnCategoryManager: React.FC<ColumnCategoryManagerProps> = ({
         {/* Action Button to Open Categorization Studio */}
         <button
           onClick={() => setModalOpen(true)}
-          className="flex items-center gap-1.5 px-3 py-1 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300 rounded-md text-[11px] font-medium transition-colors shrink-0 shadow-2xs"
+          className="flex items-center gap-1.5 px-3 py-1 bg-white border border-slate-200 text-slate-700 hover:bg-blue-50/60 hover:text-blue-700 hover:border-blue-200 rounded-md text-[11px] font-medium transition-colors shrink-0 shadow-2xs cursor-pointer"
         >
           <SlidersHorizontal className="w-3 h-3 text-slate-500" />
           <span>Kelola Tipe & Kategori</span>
@@ -244,7 +245,7 @@ export const ColumnCategoryManager: React.FC<ColumnCategoryManagerProps> = ({
                     <div className="flex items-end gap-2">
                       <button
                         type="submit"
-                        className="px-3 py-1.5 bg-slate-900 text-white rounded font-medium hover:bg-slate-800 transition-colors shadow-2xs cursor-pointer w-full"
+                        className="px-3 py-1.5 bg-blue-600 text-white rounded font-semibold hover:bg-blue-700 transition-colors shadow-2xs cursor-pointer w-full"
                       >
                         Simpan Kolom
                       </button>

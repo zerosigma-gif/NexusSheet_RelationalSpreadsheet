@@ -75,12 +75,12 @@ export const SheetTabs: React.FC<SheetTabsProps> = ({
               key={sheet.id}
               className={`group relative flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-md border transition-all cursor-pointer ${
                 isActive
-                  ? 'bg-slate-50 border-slate-300 text-slate-900 shadow-2xs font-semibold ring-1 ring-slate-200/50'
-                  : 'bg-white border-slate-200/60 text-slate-600 hover:bg-slate-50 hover:text-slate-900 hover:border-slate-300'
+                  ? 'bg-blue-50/60 border-blue-400/80 text-blue-950 shadow-2xs font-semibold ring-1 ring-blue-200/60'
+                  : 'bg-white border-slate-200/70 text-slate-600 hover:bg-slate-50 hover:text-slate-900 hover:border-slate-300'
               }`}
               onClick={() => !isEditing && onSelectSheet(sheet.id)}
             >
-              <Table className={`w-3.5 h-3.5 ${isActive ? 'text-slate-800' : 'text-slate-400'}`} />
+              <Table className={`w-3.5 h-3.5 ${isActive ? 'text-blue-600' : 'text-slate-400'}`} />
 
               {isEditing ? (
                 <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
@@ -125,7 +125,7 @@ export const SheetTabs: React.FC<SheetTabsProps> = ({
                 <span>({sheet.data.length})</span>
                 {relationCount > 0 && (
                   <span
-                    className="text-slate-500 flex items-center"
+                    className="text-teal-600 flex items-center font-semibold"
                     title={`${relationCount} kolom berelasi dengan sheet lain`}
                   >
                     <Link2 className="w-3 h-3" />
@@ -293,10 +293,10 @@ export const SheetTabs: React.FC<SheetTabsProps> = ({
         {/* Add New Blank Sheet */}
         <button
           onClick={onAddSheet}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-slate-600 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 border border-dashed border-slate-300 rounded-md transition-colors font-medium shadow-2xs"
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-slate-700 hover:text-blue-700 bg-white hover:bg-blue-50/60 border border-dashed border-slate-300 hover:border-blue-300 rounded-md transition-colors font-medium shadow-2xs cursor-pointer"
           title="Tambah sheet kosong baru"
         >
-          <Plus className="w-3.5 h-3.5 text-slate-700" />
+          <Plus className="w-3.5 h-3.5 text-slate-600" />
           <span>Sheet Baru</span>
         </button>
       </div>

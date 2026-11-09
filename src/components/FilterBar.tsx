@@ -176,12 +176,12 @@ export const FilterBar: React.FC<FilterBarProps> = ({
               placeholder="Cari cepat di semua kolom aktif..."
               value={globalQuery}
               onChange={(e) => onSetGlobalQuery(e.target.value)}
-              className="w-full pl-8.5 pr-8 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-900 placeholder:text-slate-400 focus:outline-hidden focus:ring-1 focus:ring-slate-400 focus:bg-white transition-all"
+              className="w-full pl-8.5 pr-8 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-900 placeholder:text-slate-400 focus:outline-hidden focus:ring-1 focus:ring-blue-500 focus:border-blue-500 focus:bg-white transition-all"
             />
             {globalQuery && (
               <button
                 onClick={() => onSetGlobalQuery('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
               >
                 <X className="w-3 h-3" />
               </button>
@@ -192,11 +192,11 @@ export const FilterBar: React.FC<FilterBarProps> = ({
           <div className="relative">
             <button
               onClick={() => setFilterPopoverOpen(!filterPopoverOpen)}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200/80 text-slate-800 text-xs font-semibold rounded-lg transition-colors shadow-2xs whitespace-nowrap"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50/80 hover:bg-blue-100/90 text-blue-900 text-xs font-semibold rounded-lg border border-blue-200/90 transition-colors shadow-2xs whitespace-nowrap cursor-pointer"
             >
-              <Filter className="w-3.5 h-3.5 text-slate-600" />
+              <Filter className="w-3.5 h-3.5 text-blue-600" />
               <span>+ Filter Kolom</span>
-              <ChevronDown className="w-3 h-3 text-slate-400" />
+              <ChevronDown className="w-3 h-3 text-blue-400" />
             </button>
 
             {/* Filter Popover Form */}
@@ -320,7 +320,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
                       </button>
                       <button
                         type="submit"
-                        className="px-3 py-1.5 bg-slate-900 text-white rounded-md text-xs font-semibold hover:bg-slate-800 transition-colors"
+                        className="px-3 py-1.5 bg-blue-600 text-white rounded-md text-xs font-semibold hover:bg-blue-700 transition-colors shadow-xs cursor-pointer"
                       >
                         Terapkan Filter
                       </button>
@@ -335,13 +335,13 @@ export const FilterBar: React.FC<FilterBarProps> = ({
           {onOpenConditionalFormatting && (
             <button
               onClick={onOpenConditionalFormatting}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-800 text-xs font-semibold rounded-lg border border-slate-200 transition-colors shadow-2xs whitespace-nowrap"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-indigo-50/70 text-indigo-950 text-xs font-semibold rounded-lg border border-slate-200 hover:border-indigo-200 transition-colors shadow-2xs whitespace-nowrap cursor-pointer"
               title="Kelola Aturan Format Bersyarat (Heatmap, Skala Warna, Kumpulan Indikator)"
             >
-              <Palette className="w-3.5 h-3.5 text-slate-600" />
+              <Palette className="w-3.5 h-3.5 text-indigo-600" />
               <span>Format Bersyarat</span>
               {activeRulesCount > 0 && (
-                <span className="w-4 h-4 rounded-full bg-slate-900 text-white text-[10px] flex items-center justify-center font-bold">
+                <span className="w-4 h-4 rounded-full bg-indigo-600 text-white text-[10px] flex items-center justify-center font-bold">
                   {activeRulesCount}
                 </span>
               )}
@@ -382,16 +382,16 @@ export const FilterBar: React.FC<FilterBarProps> = ({
                 return (
                   <span
                     key={f.id}
-                    className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[11px] bg-white text-slate-800 border border-slate-200 shadow-2xs font-medium"
+                    className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[11px] bg-blue-50/70 text-blue-950 border border-blue-200/90 shadow-2xs font-medium"
                   >
-                    <span className="text-slate-500">{col?.name || f.columnKey}</span>
-                    <span className="text-slate-400 font-mono text-[10px]">{getOperatorLabel(f.operator)}</span>
-                    <span className="font-semibold text-slate-900">
+                    <span className="text-blue-700/80">{col?.name || f.columnKey}</span>
+                    <span className="text-blue-500 font-mono text-[10px]">{getOperatorLabel(f.operator)}</span>
+                    <span className="font-semibold text-blue-950">
                       {f.secondValue ? `${f.value} s/d ${f.secondValue}` : String(f.value || '')}
                     </span>
                     <button
                       onClick={() => onRemoveFilter(f.id)}
-                      className="p-0.5 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-700 transition-colors"
+                      className="p-0.5 hover:bg-blue-100/80 rounded text-blue-400 hover:text-blue-800 transition-colors cursor-pointer"
                     >
                       <X className="w-3 h-3" />
                     </button>
@@ -411,11 +411,11 @@ export const FilterBar: React.FC<FilterBarProps> = ({
                   return (
                     <span
                       key={r.id}
-                      className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[11px] bg-white text-slate-800 border border-slate-200 shadow-2xs font-medium"
+                      className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[11px] bg-indigo-50/70 text-indigo-950 border border-indigo-200/80 shadow-2xs font-medium"
                     >
-                      <Palette className="w-3 h-3 text-slate-500" />
-                      <span className="text-slate-700">{col?.name || r.columnKey}</span>
-                      <span className="text-slate-400 font-mono text-[10px]">
+                      <Palette className="w-3 h-3 text-indigo-500" />
+                      <span className="text-indigo-900">{col?.name || r.columnKey}</span>
+                      <span className="text-indigo-500 font-mono text-[10px]">
                         {r.type === 'color_scale'
                           ? 'Skala Warna'
                           : r.type === 'icon_set'
@@ -427,7 +427,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
                       {onRemoveConditionalRule && (
                         <button
                           onClick={() => onRemoveConditionalRule(r.id)}
-                          className="p-0.5 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-700 transition-colors"
+                          className="p-0.5 hover:bg-indigo-100/80 rounded text-indigo-400 hover:text-indigo-800 transition-colors cursor-pointer"
                           title="Hapus format bersyarat ini"
                         >
                           <X className="w-3 h-3" />

@@ -65,18 +65,21 @@ export function formatCellValue(value: any, type: ColumnType, currencyCode = 'ID
 }
 
 export const CATEGORY_PALETTES: Record<string, { bg: string; text: string; border: string }> = {
-  'Identifikasi': { bg: 'bg-slate-50', text: 'text-slate-700', border: 'border-slate-200' },
-  'Relasi Entitas': { bg: 'bg-slate-50', text: 'text-slate-700', border: 'border-slate-200' },
-  'Finansial & Volume': { bg: 'bg-slate-50', text: 'text-slate-700', border: 'border-slate-200' },
-  'Logistik & Waktu': { bg: 'bg-slate-50', text: 'text-slate-700', border: 'border-slate-200' },
-  'Status & Operasional': { bg: 'bg-slate-50', text: 'text-slate-700', border: 'border-slate-200' },
-  'Profil & Identitas': { bg: 'bg-slate-50', text: 'text-slate-700', border: 'border-slate-200' },
-  'Klasifikasi Pasar': { bg: 'bg-slate-50', text: 'text-slate-700', border: 'border-slate-200' },
-  'Geografis': { bg: 'bg-slate-50', text: 'text-slate-700', border: 'border-slate-200' },
-  'Komersial & Biaya': { bg: 'bg-slate-50', text: 'text-slate-700', border: 'border-slate-200' },
-  'Gudang & Inventaris': { bg: 'bg-slate-50', text: 'text-slate-700', border: 'border-slate-200' },
-  'Mutu & Supplier': { bg: 'bg-slate-50', text: 'text-slate-700', border: 'border-slate-200' },
-  'Default': { bg: 'bg-slate-50', text: 'text-slate-700', border: 'border-slate-200' },
+  'Identifikasi': { bg: 'bg-blue-50/80', text: 'text-blue-900', border: 'border-blue-200' },
+  'Relasi Entitas': { bg: 'bg-teal-50/80', text: 'text-teal-900', border: 'border-teal-200' },
+  'Finansial & Volume': { bg: 'bg-emerald-50/80', text: 'text-emerald-900', border: 'border-emerald-200' },
+  'Logistik & Waktu': { bg: 'bg-amber-50/80', text: 'text-amber-900', border: 'border-amber-200' },
+  'Status & Operasional': { bg: 'bg-sky-50/80', text: 'text-sky-900', border: 'border-sky-200' },
+  'Profil & Identitas': { bg: 'bg-indigo-50/70', text: 'text-indigo-900', border: 'border-indigo-200' },
+  'Klasifikasi Pasar': { bg: 'bg-rose-50/70', text: 'text-rose-900', border: 'border-rose-200' },
+  'Geografis': { bg: 'bg-purple-50/70', text: 'text-purple-900', border: 'border-purple-200' },
+  'Komersial & Biaya': { bg: 'bg-emerald-50/80', text: 'text-emerald-900', border: 'border-emerald-200' },
+  'Gudang & Inventaris': { bg: 'bg-amber-50/80', text: 'text-amber-900', border: 'border-amber-200' },
+  'Mutu & Supplier': { bg: 'bg-teal-50/80', text: 'text-teal-900', border: 'border-teal-200' },
+  'Transaksi Pesanan': { bg: 'bg-blue-50/80', text: 'text-blue-900', border: 'border-blue-200' },
+  'Data Pelanggan': { bg: 'bg-teal-50/80', text: 'text-teal-900', border: 'border-teal-200' },
+  'Katalog Produk': { bg: 'bg-amber-50/80', text: 'text-amber-900', border: 'border-amber-200' },
+  'Default': { bg: 'bg-slate-50', text: 'text-slate-800', border: 'border-slate-200' },
 };
 
 export function getCategoryBadgeStyle(categoryName: string) {
