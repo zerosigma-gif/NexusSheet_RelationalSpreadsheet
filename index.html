@@ -13,18 +13,133 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script>
-      // Suppress Vite dev server WebSocket disconnect error in Cloud Run proxy / iframe environment
-      window.addEventListener('error', function (event) {
-        if (event && event.message && (event.message.includes('WebSocket') || event.message.includes('websocket'))) {
-          event.stopImmediatePropagation();
-          event.preventDefault();
+      (function () {
+        // 1. Suppress Vite HMR WebSocket disconnect errors in cloud proxy / iframe environment
+        var origConsoleError = console.error;
+        console.error = function () {
+          var args = Array.prototype.slice.call(arguments);
+          var msg = args
+            .map(function (a) {
+              return a && a.stack ? a.stack : a && a.message ? a.message : String(a);
+            })
+            .join(' ');
+
+          if (
+            msg.indexOf('WebSocket closed without opened') !== -1 ||
+            msg.indexOf('failed to connect to websocket') !== -1 ||
+            (msg.indexOf('WebSocket') !== -1 && msg.indexOf('@vite') !== -1)
+          ) {
+            return;
+          }
+          return origConsoleError.apply(console, args);
+        };
+
+        var origConsoleWarn = console.warn;
+        console.warn = function () {
+          var args = Array.prototype.slice.call(arguments);
+          var msg = args.map(function (a) { return String(a); }).join(' ');
+          if (msg.indexOf('WebSocket') !== -1 && msg.indexOf('vite') !== -1) {
+            return;
+          }
+          return origConsoleWarn.apply(console, args);
+        };
+
+        // 2. Mock Vite's HMR WebSocket safely
+        if (typeof window !== 'undefined' && window.WebSocket) {
+          var RealWebSocket = window.WebSocket;
+          var MockWebSocket = function (url, protocols) {
+            var urlStr = String(url || '');
+            var protoStr = String(protocols || '');
+            var isViteHmr =
+              protoStr.indexOf('vite') !== -1 ||
+              urlStr.indexOf('vite') !== -1 ||
+              urlStr.indexOf('/@vite') !== -1;
+
+            if (isViteHmr) {
+              var listeners = {};
+              var mock = {
+                url: urlStr,
+                readyState: 1, // OPEN
+                protocol: protoStr,
+                extensions: '',
+                bufferedAmount: 0,
+                binaryType: 'blob',
+                addEventListener: function (type, listener) {
+                  if (!listeners[type]) listeners[type] = [];
+                  listeners[type].push(listener);
+                },
+                removeEventListener: function (type, listener) {
+                  if (!listeners[type]) return;
+                  listeners[type] = listeners[type].filter(function (l) {
+                    return l !== listener;
+                  });
+                },
+                dispatchEvent: function (ev) {
+                  var fns = listeners[ev.type] || [];
+                  for (var i = 0; i < fns.length; i++) {
+                    try { fns[i].call(mock, ev); } catch (_) {}
+                  }
+                  return true;
+                },
+                send: function () {},
+                close: function () {
+                  mock.readyState = 3; // CLOSED
+                  if (typeof mock.onclose === 'function') {
+                    try { mock.onclose({ wasClean: true, code: 1000, reason: '' }); } catch (_) {}
+                  }
+                },
+                onopen: null,
+                onmessage: null,
+                onerror: null,
+                onclose: null,
+              };
+
+              setTimeout(function () {
+                var openEv = { type: 'open', target: mock };
+                mock.dispatchEvent(openEv);
+                if (typeof mock.onopen === 'function') {
+                  try { mock.onopen(openEv); } catch (_) {}
+                }
+              }, 10);
+
+              return mock;
+            }
+
+            return new RealWebSocket(url, protocols);
+          };
+
+          MockWebSocket.prototype = RealWebSocket.prototype;
+          MockWebSocket.CONNECTING = 0;
+          MockWebSocket.OPEN = 1;
+          MockWebSocket.CLOSING = 2;
+          MockWebSocket.CLOSED = 3;
+          window.WebSocket = MockWebSocket;
         }
-      });
-      window.addEventListener('unhandledrejection', function (event) {
-        if (event && event.reason && String(event.reason).toLowerCase().includes('websocket')) {
-          event.preventDefault();
-        }
-      });
+
+        // 3. Catch window unhandled errors and rejections
+        window.addEventListener('error', function (event) {
+          if (
+            event &&
+            event.message &&
+            (event.message.indexOf('WebSocket') !== -1 ||
+              event.message.indexOf('websocket') !== -1)
+          ) {
+            event.stopImmediatePropagation();
+            event.preventDefault();
+          }
+        }, true);
+
+        window.addEventListener('unhandledrejection', function (event) {
+          if (
+            event &&
+            event.reason &&
+            String(event.reason).toLowerCase().indexOf('websocket') !== -1
+          ) {
+            event.stopImmediatePropagation();
+            event.preventDefault();
+          }
+        }, true);
+      })();
     </script>
   </head>
   <body class="bg-slate-50 text-slate-800 antialiased font-sans selection:bg-slate-200">
