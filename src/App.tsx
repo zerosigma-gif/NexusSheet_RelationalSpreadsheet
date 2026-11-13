@@ -1,6 +1,6 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { INITIAL_SHEETS } from './data/demoData';
-import { Sheet, FilterRule, SortConfig, ColumnDef, ConditionalFormattingRule } from './types/spreadsheet';
+import { Sheet, FilterRule, SortConfig, ColumnDef, ConditionalFormattingRule, RowData } from './types/spreadsheet';
 import { filterRows, sortRows } from './utils/filterEngine';
 import {
   parseExcelFile,
@@ -19,7 +19,12 @@ import { FilterStudioView } from './components/FilterStudioView';
 import { ConditionalFormattingModal } from './components/ConditionalFormattingModal';
 import { getDefaultConditionalRules } from './utils/conditionalFormatEngine';
 import { CheckCircle2, AlertCircle } from 'lucide-react';
-import { getEvaluatedSheet } from './utils/formulaEngine';
+import {
+  getEvaluatedSheet,
+  FormulaEngine,
+  AIFormulaCache,
+  AICallRequest,
+} from './utils/formulaEngine';
 
 export default function App() {
   const [sheets, setSheets] = useState<Sheet[]>(INITIAL_SHEETS);
@@ -129,11 +134,89 @@ export default function App() {
     () => conditionalRulesBySheet[activeSheet?.id] || [],
     [conditionalRulesBySheet, activeSheet?.id]
   );
+  // AI Formula async evaluation cache (keyed by deterministic hash of prompt + inputs)
+  const [aiResultsCache, setAiResultsCache] = useState<AIFormulaCache>({});
+  const inFlightAIKeysRef = useRef<Set<string>>(new Set());
+
+  const handleRefreshAICell = (cacheKey: string) => {
+    inFlightAIKeysRef.current.delete(cacheKey);
+    setAiResultsCache((prev) => {
+      if (!prev[cacheKey]) return prev;
+      const next = { ...prev };
+      delete next[cacheKey];
+      return next;
+    });
+  };
+
+  // Trigger server-side Gemini analysis for any unresolved =AI() formulas in active sheet
+  useEffect(() => {
+    if (!activeSheet) return;
+    const engine = new FormulaEngine(activeSheet, aiResultsCache);
+    engine.evaluateAll();
+    const requests = engine.getAIRequests();
+
+    const pendingMap = new Map<string, AICallRequest>();
+    requests.forEach((req) => {
+      if (!aiResultsCache[req.cacheKey] && !inFlightAIKeysRef.current.has(req.cacheKey)) {
+        pendingMap.set(req.cacheKey, req);
+      }
+    });
+
+    if (pendingMap.size === 0) return;
+
+    const loadingUpdates: AIFormulaCache = {};
+    pendingMap.forEach((_req, key) => {
+      inFlightAIKeysRef.current.add(key);
+      loadingUpdates[key] = { status: 'loading' };
+    });
+
+    setAiResultsCache((prev) => ({ ...prev, ...loadingUpdates }));
+
+    pendingMap.forEach(async (req, cacheKey) => {
+      try {
+        const res = await fetch('/api/ai/analyze-cell', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            prompt: req.prompt,
+            formula: req.formula,
+            cellRef: req.cellRef,
+            sheetName: req.sheetName,
+            columnName: req.columnName,
+            targets: req.targets,
+            rowContext: req.rowContext,
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(data?.error || `Permintaan gagal (HTTP ${res.status})`);
+        }
+        setAiResultsCache((prev) => ({
+          ...prev,
+          [cacheKey]: {
+            status: 'success',
+            result: String(data.result ?? '').trim(),
+          },
+        }));
+      } catch (err: any) {
+        setAiResultsCache((prev) => ({
+          ...prev,
+          [cacheKey]: {
+            status: 'error',
+            error: err?.message || 'Gagal menganalisis sel dengan Gemini AI.',
+          },
+        }));
+      } finally {
+        inFlightAIKeysRef.current.delete(cacheKey);
+      }
+    });
+  }, [activeSheet, aiResultsCache]);
+
   // Filter and sort active sheet data
   const processedRows = useMemo(() => {
     if (!activeSheet) return [];
     // Evaluate formulas into computed values for filtering, sorting, and charts
-    const evaluatedSheet = getEvaluatedSheet(activeSheet);
+    const evaluatedSheet = getEvaluatedSheet(activeSheet, aiResultsCache);
     const filtered = filterRows(
       evaluatedSheet.data,
       currentFilters,
@@ -141,7 +224,7 @@ export default function App() {
       globalQuery
     );
     return sortRows(filtered, currentSortConfig);
-  }, [activeSheet, currentFilters, globalQuery, currentSortConfig]);
+  }, [activeSheet, aiResultsCache, currentFilters, globalQuery, currentSortConfig]);
 
   // Import Handler
   const handleImportFile = async (file: File) => {
@@ -529,6 +612,156 @@ export default function App() {
     showToast(`${rowIds.length} baris data berhasil dihapus.`, 'success');
   };
 
+  const handleBulkUpdateColumn = (
+    rowIds: string[],
+    columnKey: string,
+    newValue: any
+  ) => {
+    if (rowIds.length === 0) return;
+    const col = activeSheet.columns.find((c) => c.key === columnKey);
+    saveStateForUndo();
+    setSheets((prev) =>
+      prev.map((s) => {
+        if (s.id !== activeSheet.id) return s;
+        return {
+          ...s,
+          data: s.data.map((r) =>
+            rowIds.includes(r._id) ? { ...r, [columnKey]: newValue } : r
+          ),
+        };
+      })
+    );
+    showToast(
+      `${rowIds.length} baris berhasil diperbarui pada kolom "${col?.name || columnKey}".`,
+      'success'
+    );
+  };
+
+  const handleMoveRowsToSheet = (
+    rowIds: string[],
+    targetSheetId: string,
+    options?: { newSheetName?: string; includeUnmatchedColumns?: boolean }
+  ) => {
+    if (rowIds.length === 0) return;
+    const rowsToMove = activeSheet.data.filter((r) => rowIds.includes(r._id));
+    if (rowsToMove.length === 0) return;
+
+    saveStateForUndo();
+    const timestamp = Date.now();
+
+    if (targetSheetId === '__NEW__') {
+      const newSheetId = `sheet-moved-${timestamp}`;
+      const sheetName =
+        options?.newSheetName?.trim() || `${activeSheet.name} (Pindahan)`;
+      const copiedRows = rowsToMove.map((r, idx) => ({
+        ...JSON.parse(JSON.stringify(r)),
+        _id: `row-${timestamp}-${idx}`,
+      }));
+
+      const newSheet: Sheet = {
+        id: newSheetId,
+        name: sheetName,
+        description: `Baris pindahan dari "${activeSheet.name}"`,
+        primaryKey: activeSheet.primaryKey,
+        columns: JSON.parse(JSON.stringify(activeSheet.columns)),
+        data: copiedRows,
+      };
+
+      setSheets((prev) => [
+        ...prev.map((s) =>
+          s.id === activeSheet.id
+            ? { ...s, data: s.data.filter((r) => !rowIds.includes(r._id)) }
+            : s
+        ),
+        newSheet,
+      ]);
+
+      showToast(
+        `${rowsToMove.length} baris dipindahkan ke sheet baru "${sheetName}".`,
+        'success'
+      );
+      return;
+    }
+
+    const targetSheet = sheets.find((s) => s.id === targetSheetId);
+    if (!targetSheet || targetSheet.id === activeSheet.id) return;
+
+    // Identify columns in sourceSheet that aren't in targetSheet
+    const unmatchedSourceCols = activeSheet.columns.filter(
+      (sc) =>
+        !targetSheet.columns.some(
+          (tc) =>
+            tc.key === sc.key ||
+            tc.name.trim().toLowerCase() === sc.name.trim().toLowerCase()
+        )
+    );
+
+    const updatedTargetColumns: ColumnDef[] = options?.includeUnmatchedColumns
+      ? [
+          ...targetSheet.columns,
+          ...unmatchedSourceCols.map((c) => ({
+            ...JSON.parse(JSON.stringify(c)),
+            isPrimaryKey: false,
+            visible: true,
+          })),
+        ]
+      : targetSheet.columns;
+
+    const mappedRows = rowsToMove.map((srcRow, idx) => {
+      const newRow: RowData = { _id: `row-${timestamp}-${idx}` };
+      updatedTargetColumns.forEach((tCol) => {
+        // 1. Direct key match
+        if (srcRow[tCol.key] !== undefined) {
+          newRow[tCol.key] = srcRow[tCol.key];
+          return;
+        }
+        // 2. Match by normalized column name
+        const matchingSrcCol = activeSheet.columns.find(
+          (sc) => sc.name.trim().toLowerCase() === tCol.name.trim().toLowerCase()
+        );
+        if (matchingSrcCol && srcRow[matchingSrcCol.key] !== undefined) {
+          newRow[tCol.key] = srcRow[matchingSrcCol.key];
+          return;
+        }
+        // 3. Sensible default by column type
+        if (
+          tCol.type === 'number' ||
+          tCol.type === 'currency' ||
+          tCol.type === 'percentage'
+        ) {
+          newRow[tCol.key] = 0;
+        } else {
+          newRow[tCol.key] = '';
+        }
+      });
+      return newRow;
+    });
+
+    setSheets((prev) =>
+      prev.map((s) => {
+        if (s.id === activeSheet.id) {
+          return {
+            ...s,
+            data: s.data.filter((r) => !rowIds.includes(r._id)),
+          };
+        }
+        if (s.id === targetSheetId) {
+          return {
+            ...s,
+            columns: updatedTargetColumns,
+            data: [...s.data, ...mappedRows],
+          };
+        }
+        return s;
+      })
+    );
+
+    showToast(
+      `${rowsToMove.length} baris berhasil dipindahkan ke sheet "${targetSheet.name}".`,
+      'success'
+    );
+  };
+
   // Column Schema updates
   const handleUpdateColumn = (updatedCol: ColumnDef) => {
     saveStateForUndo();
@@ -698,6 +931,8 @@ export default function App() {
             onUpdateCell={handleUpdateCell}
             onAddRow={handleAddRow}
             onDeleteRows={handleDeleteRows}
+            onBulkUpdateColumn={handleBulkUpdateColumn}
+            onMoveRowsToSheet={handleMoveRowsToSheet}
             onSwitchSheet={(sheetId) => {
               setActiveSheetId(sheetId);
               setSelectedCategory('ALL');
@@ -708,6 +943,8 @@ export default function App() {
             onUndo={handleUndo}
             onRedo={handleRedo}
             conditionalRules={currentConditionalRules}
+            aiResultsCache={aiResultsCache}
+            onRefreshAICell={handleRefreshAICell}
           />
         )}
 

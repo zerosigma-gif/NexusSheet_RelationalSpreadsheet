@@ -94,6 +94,14 @@ export const SUPPORTED_FUNCTIONS: {
     insertTemplate: 'IF( > 0, "Ya", "Tidak")',
     cursorOffsetInside: 18,
   },
+  {
+    name: 'AI',
+    syntax: 'AI("instruksi", sel_atau_rentang)',
+    desc: 'Menganalisis nilai sel atau rentang data menggunakan Gemini AI',
+    category: 'Analisis',
+    insertTemplate: 'AI("Analisis sel ini", )',
+    cursorOffsetInside: 1,
+  },
 ];
 
 /**
@@ -108,6 +116,20 @@ export function extractFormulaContext(
   }
 
   const textBeforeCursor = text.slice(0, cursorPos);
+
+  // Skip autocomplete while cursor is inside a quoted string literal (e.g. =AI("Analyze...
+  let activeQuote: '"' | "'" | null = null;
+  for (let i = 0; i < textBeforeCursor.length; i++) {
+    const ch = textBeforeCursor[i];
+    if (activeQuote) {
+      if (ch === activeQuote) activeQuote = null;
+    } else if (ch === '"' || ch === "'") {
+      activeQuote = ch;
+    }
+  }
+  if (activeQuote !== null) {
+    return null;
+  }
 
   // Check if we are inside square brackets: e.g. "=[Col"
   const lastOpenBracket = textBeforeCursor.lastIndexOf('[');
@@ -199,7 +221,10 @@ export function getFormulaSuggestions(
           subtitle: fn.syntax,
           description: fn.desc,
           badge: fn.category,
-          badgeColor: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+          badgeColor:
+            fn.name === 'AI'
+              ? 'bg-blue-50 text-blue-700 border-blue-200'
+              : 'bg-slate-100 text-slate-700 border-slate-200',
           iconType: 'fx',
         });
       }

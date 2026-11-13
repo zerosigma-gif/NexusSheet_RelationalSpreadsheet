@@ -23,7 +23,14 @@ import {
   FunctionSquare,
   AlertTriangle,
   Undo2,
-  Redo2
+  Redo2,
+  CheckSquare,
+  Edit3,
+  FolderInput,
+  Loader2,
+  RefreshCw,
+  Copy,
+  FileSearch
 } from 'lucide-react';
 import {
   ColumnDef,
@@ -49,9 +56,11 @@ import {
 import {
   FormulaEngine,
   isFormula,
+  isAIFormula,
   columnIndexToLetter,
   letterToColumnIndex,
-  FORMULA_DOCS
+  FORMULA_DOCS,
+  AIFormulaCache
 } from '../utils/formulaEngine';
 import {
   validateSheet,
@@ -79,6 +88,12 @@ interface SpreadsheetGridProps {
   onUpdateCell: (rowId: string, columnKey: string, newValue: any) => void;
   onAddRow: () => void;
   onDeleteRows: (rowIds: string[]) => void;
+  onBulkUpdateColumn?: (rowIds: string[], columnKey: string, newValue: any) => void;
+  onMoveRowsToSheet?: (
+    rowIds: string[],
+    targetSheetId: string,
+    options?: { newSheetName?: string; includeUnmatchedColumns?: boolean }
+  ) => void;
   onSwitchSheet: (sheetId: string) => void;
   onUpdateColumn?: (updatedCol: ColumnDef) => void;
   canUndo?: boolean;
@@ -86,6 +101,8 @@ interface SpreadsheetGridProps {
   onUndo?: () => void;
   onRedo?: () => void;
   conditionalRules?: ConditionalFormattingRule[];
+  aiResultsCache?: AIFormulaCache;
+  onRefreshAICell?: (cacheKey: string) => void;
 }
 
 export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
@@ -98,6 +115,8 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
   onUpdateCell,
   onAddRow,
   onDeleteRows,
+  onBulkUpdateColumn,
+  onMoveRowsToSheet,
   onSwitchSheet,
   onUpdateColumn,
   canUndo = false,
@@ -105,10 +124,16 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
   onUndo,
   onRedo,
   conditionalRules = [],
+  aiResultsCache = {},
+  onRefreshAICell,
 }) => {
   // Formula Engine memoized instance and evaluated cells lookup
-  const formulaEngine = useMemo(() => new FormulaEngine(sheet), [sheet]);
+  const formulaEngine = useMemo(
+    () => new FormulaEngine(sheet, aiResultsCache),
+    [sheet, aiResultsCache]
+  );
   const evaluatedMap = useMemo(() => formulaEngine.evaluateAll(), [formulaEngine]);
+  const [copiedAICellKey, setCopiedAICellKey] = useState<string | null>(null);
 
   // Column statistics for conditional formatting
   const columnStatsMap = useMemo(() => {
@@ -156,8 +181,35 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
   // Formula documentation modal state
   const [showFormulaHelp, setShowFormulaHelp] = useState(false);
 
-  // Selected rows (checkboxes)
+  // Selection Mode & Bulk Actions state
+  const [isSelectionMode, setIsSelectionMode] = useState<boolean>(false);
   const [selectedRowIds, setSelectedRowIds] = useState<string[]>([]);
+  const [lastSelectedRowIndex, setLastSelectedRowIndex] = useState<number | null>(null);
+  const [bulkActionModal, setBulkActionModal] = useState<
+    'update_column' | 'move_sheet' | 'confirm_delete' | null
+  >(null);
+  const [bulkTargetColKey, setBulkTargetColKey] = useState<string>('');
+  const [bulkNewValue, setBulkNewValue] = useState<string>('');
+  const [bulkTargetSheetId, setBulkTargetSheetId] = useState<string>('');
+  const [bulkNewSheetName, setBulkNewSheetName] = useState<string>('');
+  const [bulkIncludeUnmatchedCols, setBulkIncludeUnmatchedCols] = useState<boolean>(false);
+
+  // Reset row selection cleanly when active sheet changes
+  useEffect(() => {
+    setSelectedRowIds([]);
+    setLastSelectedRowIndex(null);
+    setBulkActionModal(null);
+    setIsSelectionMode(false);
+  }, [sheet.id]);
+
+  // Prune selectedRowIds if rows are deleted or undone
+  useEffect(() => {
+    const validIds = new Set(sheet.data.map((r) => r._id));
+    setSelectedRowIds((prev) => {
+      const filtered = prev.filter((id) => validIds.has(id));
+      return filtered.length === prev.length ? prev : filtered;
+    });
+  }, [sheet.data]);
 
   // Relational preview hover popover
   const [relationalPreview, setRelationalPreview] = useState<{
@@ -171,6 +223,14 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
 
   const editInputRef = useRef<HTMLInputElement>(null);
   const formulaInputRef = useRef<HTMLInputElement>(null);
+  const gridContainerRef = useRef<HTMLDivElement>(null);
+  const blurSaveTimerRef = useRef<number | null>(null);
+  const editingCellRef = useRef<{ rowId: string; colKey: string } | null>(null);
+  const selectAllOnEditRef = useRef<boolean>(true);
+
+  useEffect(() => {
+    editingCellRef.current = editingCell;
+  }, [editingCell]);
 
   // Autocomplete dropdown state
   const [autocompleteSuggestions, setAutocompleteSuggestions] = useState<AutocompleteSuggestion[]>([]);
@@ -304,12 +364,113 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
   useEffect(() => {
     if (editingCell && editInputRef.current) {
       editInputRef.current.focus();
-      editInputRef.current.select();
+      if (selectAllOnEditRef.current) {
+        editInputRef.current.select();
+      } else {
+        const len = editInputRef.current.value.length;
+        editInputRef.current.setSelectionRange(len, len);
+      }
     }
   }, [editingCell]);
 
-  const handleStartEdit = (row: RowData, col: ColumnDef) => {
-    setEditingCell({ rowId: row._id, colKey: col.key });
+  const moveCellSelection = (
+    deltaRow: number,
+    deltaCol: number,
+    wrapHorizontally = false
+  ) => {
+    if (rows.length === 0 || visibleColumns.length === 0) return;
+
+    if (!selectedCell) {
+      const firstRow = rows[0];
+      const firstCol = visibleColumns[0];
+      setSelectedCell({
+        rowId: firstRow._id,
+        colKey: firstCol.key,
+        rowIndex: 0,
+        colIndex: 0,
+      });
+      return;
+    }
+
+    const foundRowIdx = rows.findIndex((r) => r._id === selectedCell.rowId);
+    const foundColIdx = visibleColumns.findIndex((c) => c.key === selectedCell.colKey);
+    const curRow =
+      foundRowIdx >= 0
+        ? foundRowIdx
+        : Math.max(0, Math.min(rows.length - 1, selectedCell.rowIndex));
+    const curCol =
+      foundColIdx >= 0
+        ? foundColIdx
+        : Math.max(0, Math.min(visibleColumns.length - 1, selectedCell.colIndex));
+
+    let nextRow = curRow;
+    let nextCol = curCol;
+
+    if (wrapHorizontally) {
+      nextCol = curCol + deltaCol;
+      if (nextCol >= visibleColumns.length) {
+        if (curRow + 1 < rows.length) {
+          nextRow = curRow + 1;
+          nextCol = 0;
+        } else {
+          nextCol = visibleColumns.length - 1;
+        }
+      } else if (nextCol < 0) {
+        if (curRow - 1 >= 0) {
+          nextRow = curRow - 1;
+          nextCol = visibleColumns.length - 1;
+        } else {
+          nextCol = 0;
+        }
+      }
+    } else {
+      nextRow = Math.max(0, Math.min(rows.length - 1, curRow + deltaRow));
+      nextCol = Math.max(0, Math.min(visibleColumns.length - 1, curCol + deltaCol));
+    }
+
+    const nextRowObj = rows[nextRow];
+    const nextColObj = visibleColumns[nextCol];
+    setSelectedCell({
+      rowId: nextRowObj._id,
+      colKey: nextColObj.key,
+      rowIndex: nextRow,
+      colIndex: nextCol,
+    });
+
+    requestAnimationFrame(() => {
+      const cellEl = gridContainerRef.current?.querySelector(
+        `td[data-cell-key="${nextRowObj._id}:${nextColObj.key}"]`
+      ) as HTMLElement | null;
+      cellEl?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    });
+  };
+
+  const handleStartEdit = (row: RowData, col: ColumnDef, initialTypedChar?: string) => {
+    if (blurSaveTimerRef.current !== null) {
+      window.clearTimeout(blurSaveTimerRef.current);
+      blurSaveTimerRef.current = null;
+    }
+
+    const targetEdit = { rowId: row._id, colKey: col.key };
+    editingCellRef.current = targetEdit;
+    setEditingCell(targetEdit);
+
+    if (initialTypedChar !== undefined) {
+      selectAllOnEditRef.current = false;
+      setEditValue(initialTypedChar);
+      if (initialTypedChar === '=') {
+        setTimeout(() => {
+          if (editInputRef.current) {
+            updateCellAutocomplete(initialTypedChar, editInputRef.current);
+          }
+        }, 30);
+      } else {
+        clearAutocomplete();
+      }
+      return;
+    }
+
+    selectAllOnEditRef.current = true;
     const rawVal = formulaEngine.getRawCellValue(row._id, col.key);
     const textVal = rawVal !== undefined && rawVal !== null ? String(rawVal) : '';
     setEditValue(textVal);
@@ -324,10 +485,31 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
     }
   };
 
-  const handleSaveEdit = () => {
-    if (!editingCell) return;
+  const handleCancelEdit = () => {
+    if (blurSaveTimerRef.current !== null) {
+      window.clearTimeout(blurSaveTimerRef.current);
+      blurSaveTimerRef.current = null;
+    }
+    editingCellRef.current = null;
+    setEditingCell(null);
     clearAutocomplete();
-    const col = sheet.columns.find((c) => c.key === editingCell.colKey);
+    requestAnimationFrame(() => {
+      gridContainerRef.current?.focus({ preventScroll: true });
+    });
+  };
+
+  const handleSaveEdit = (
+    moveAfterSave?: 'nextCell' | 'prevCell' | 'nextRow' | 'prevRow'
+  ) => {
+    if (blurSaveTimerRef.current !== null) {
+      window.clearTimeout(blurSaveTimerRef.current);
+      blurSaveTimerRef.current = null;
+    }
+    const activeEdit = editingCellRef.current || editingCell;
+    if (!activeEdit) return;
+
+    clearAutocomplete();
+    const col = sheet.columns.find((c) => c.key === activeEdit.colKey);
     let finalVal: any = editValue;
 
     // If it's a formula (starts with '='), keep formula string as-is!
@@ -342,8 +524,25 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
       }
     }
 
-    onUpdateCell(editingCell.rowId, editingCell.colKey, finalVal);
+    onUpdateCell(activeEdit.rowId, activeEdit.colKey, finalVal);
+    editingCellRef.current = null;
     setEditingCell(null);
+
+    if (moveAfterSave === 'nextCell') {
+      moveCellSelection(0, 1, true);
+    } else if (moveAfterSave === 'prevCell') {
+      moveCellSelection(0, -1, true);
+    } else if (moveAfterSave === 'nextRow') {
+      moveCellSelection(1, 0, false);
+    } else if (moveAfterSave === 'prevRow') {
+      moveCellSelection(-1, 0, false);
+    }
+
+    if (moveAfterSave) {
+      requestAnimationFrame(() => {
+        gridContainerRef.current?.focus({ preventScroll: true });
+      });
+    }
   };
 
   // Active formula cell range detection for visual cell boundary highlighting in grid (e.g. A1:A5)
@@ -390,6 +589,10 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
     const formulaStr = formulaBarValue.trim();
     if (formulaStr.length <= 1) return null; // Just '='
 
+    if (isAIFormula(formulaStr)) {
+      return { value: 'Enter untuk analisis AI', isError: false, isAIHint: true };
+    }
+
     try {
       const targetRowId = selectedCell?.rowId || rows[0]?._id;
       const targetColKey = selectedCell?.colKey || visibleColumns[0]?.key;
@@ -399,12 +602,12 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
       if (result === undefined || result === null) return null;
 
       if (typeof result === 'string' && result.startsWith('#')) {
-        return { value: result, isError: true };
+        return { value: result, isError: true, isAIHint: false };
       }
 
       const targetCol = sheet.columns.find((c) => c.key === targetColKey);
       const formatted = formatCellValue(result, targetCol?.type || 'number', targetCol?.currencyCode);
-      return { value: formatted, raw: result, isError: false };
+      return { value: formatted, raw: result, isError: false, isAIHint: false };
     } catch {
       return null;
     }
@@ -495,48 +698,18 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
     if (e.key === 'Enter') {
       e.preventDefault();
       handleCommitFormulaBar();
+      moveCellSelection(e.shiftKey ? -1 : 1, 0, false);
+      requestAnimationFrame(() => gridContainerRef.current?.focus({ preventScroll: true }));
+    } else if (e.key === 'Tab') {
+      e.preventDefault();
+      handleCommitFormulaBar();
+      moveCellSelection(0, e.shiftKey ? -1 : 1, true);
+      requestAnimationFrame(() => gridContainerRef.current?.focus({ preventScroll: true }));
     } else if (e.key === 'Escape') {
       e.preventDefault();
       handleCancelFormulaBar();
+      requestAnimationFrame(() => gridContainerRef.current?.focus({ preventScroll: true }));
     }
-  };
-
-  const handleInsertQuickFormula = (formulaPrefix: string) => {
-    let target = selectedCell;
-    if (!target && rows.length > 0 && visibleColumns.length > 0) {
-      target = {
-        rowId: rows[0]._id,
-        colKey: visibleColumns[0].key,
-        rowIndex: 0,
-        colIndex: 0,
-      };
-      setSelectedCell(target);
-    }
-    if (!target) return;
-
-    const currentColLetter = columnIndexToLetter(target.colIndex);
-    const prevRowNumber = Math.max(1, target.rowIndex);
-
-    let template = '';
-    if (formulaPrefix === 'SUM') {
-      template = `=SUM(${currentColLetter}1:${currentColLetter}${Math.max(5, prevRowNumber)})`;
-    } else if (formulaPrefix === 'AVG') {
-      template = `=AVG(${currentColLetter}1:${currentColLetter}${Math.max(5, prevRowNumber)})`;
-    } else if (formulaPrefix === 'COUNT') {
-      template = `=COUNT(${currentColLetter}1:${currentColLetter}${Math.max(5, prevRowNumber)})`;
-    } else if (formulaPrefix === 'MIN') {
-      template = `=MIN(${currentColLetter}1:${currentColLetter}${Math.max(5, prevRowNumber)})`;
-    } else if (formulaPrefix === 'MAX') {
-      template = `=MAX(${currentColLetter}1:${currentColLetter}${Math.max(5, prevRowNumber)})`;
-    } else if (formulaPrefix === 'MULTIPLY') {
-      template = `=[Quantity] * [UnitPrice]`;
-    } else {
-      template = `=${formulaPrefix}`;
-    }
-
-    setFormulaBarValue(template);
-    onUpdateCell(target.rowId, target.colKey, template);
-    formulaInputRef.current?.focus();
   };
 
   const openValidationModal = (colKey?: string) => {
@@ -615,27 +788,261 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
     }
 
     if (e.key === 'Enter') {
-      handleSaveEdit();
+      e.preventDefault();
+      handleSaveEdit(e.shiftKey ? 'prevRow' : 'nextRow');
+    } else if (e.key === 'Tab') {
+      e.preventDefault();
+      handleSaveEdit(e.shiftKey ? 'prevCell' : 'nextCell');
     } else if (e.key === 'Escape') {
-      setEditingCell(null);
-      clearAutocomplete();
+      e.preventDefault();
+      handleCancelEdit();
     }
+  };
+
+  // Global spreadsheet keyboard navigation listener (Tab, Enter, Arrows, F2, Esc)
+  useEffect(() => {
+    const handleGridNavigationKeyDown = (e: KeyboardEvent) => {
+      if (showFormulaHelp || showValidationModal || bulkActionModal !== null) return;
+      if (editingCellRef.current) return;
+
+      const activeEl = document.activeElement as HTMLElement | null;
+      const isFormInput =
+        activeEl &&
+        (activeEl.tagName === 'INPUT' ||
+          activeEl.tagName === 'TEXTAREA' ||
+          activeEl.tagName === 'SELECT' ||
+          activeEl.isContentEditable);
+      if (isFormInput) return;
+
+      const isGridFocused =
+        activeEl === gridContainerRef.current ||
+        (activeEl !== null &&
+          gridContainerRef.current?.contains(activeEl) &&
+          activeEl.tagName !== 'BUTTON' &&
+          activeEl.tagName !== 'A');
+      const isBodyWithActiveCell =
+        (!activeEl || activeEl === document.body) && selectedCell !== null;
+
+      if (!isGridFocused && !isBodyWithActiveCell) return;
+
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        moveCellSelection(0, e.shiftKey ? -1 : 1, true);
+        return;
+      }
+
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        moveCellSelection(e.shiftKey ? -1 : 1, 0, false);
+        return;
+      }
+
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        moveCellSelection(-1, 0, false);
+        return;
+      }
+
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        moveCellSelection(1, 0, false);
+        return;
+      }
+
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        moveCellSelection(0, -1, false);
+        return;
+      }
+
+      if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        moveCellSelection(0, 1, false);
+        return;
+      }
+
+      if (e.key === 'F2') {
+        e.preventDefault();
+        if (rows.length === 0 || visibleColumns.length === 0) return;
+        const targetRow =
+          rows.find((r) => r._id === selectedCell?.rowId) || rows[0];
+        const targetCol =
+          visibleColumns.find((c) => c.key === selectedCell?.colKey) ||
+          visibleColumns[0];
+        if (targetRow && targetCol && targetCol.type !== 'relation') {
+          handleStartEdit(targetRow, targetCol);
+        }
+        return;
+      }
+
+      if (e.key === 'Escape') {
+        if (relationalPreview) {
+          e.preventDefault();
+          setRelationalPreview(null);
+          return;
+        }
+        if (editingCellRef.current) {
+          e.preventDefault();
+          handleCancelEdit();
+          return;
+        }
+        if (isSelectionMode) {
+          e.preventDefault();
+          exitSelectionMode();
+          return;
+        }
+        clearAutocomplete();
+        return;
+      }
+
+      // Direct typing into a selected cell starts edit mode
+      if (
+        isGridFocused &&
+        selectedCell &&
+        !e.ctrlKey &&
+        !e.metaKey &&
+        !e.altKey &&
+        e.key.length === 1 &&
+        e.key !== ' '
+      ) {
+        const targetRow = rows.find((r) => r._id === selectedCell.rowId);
+        const targetCol = visibleColumns.find((c) => c.key === selectedCell.colKey);
+        if (targetRow && targetCol && targetCol.type !== 'relation') {
+          e.preventDefault();
+          handleStartEdit(targetRow, targetCol, e.key);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleGridNavigationKeyDown);
+    return () => window.removeEventListener('keydown', handleGridNavigationKeyDown);
+  });
+
+  useEffect(() => {
+    return () => {
+      if (blurSaveTimerRef.current !== null) {
+        window.clearTimeout(blurSaveTimerRef.current);
+      }
+    };
+  }, []);
+
+  const toggleSelectionMode = () => {
+    if (isSelectionMode) {
+      setIsSelectionMode(false);
+      setSelectedRowIds([]);
+      setLastSelectedRowIndex(null);
+      setBulkActionModal(null);
+    } else {
+      setIsSelectionMode(true);
+    }
+  };
+
+  const exitSelectionMode = () => {
+    setIsSelectionMode(false);
+    setSelectedRowIds([]);
+    setLastSelectedRowIndex(null);
+    setBulkActionModal(null);
   };
 
   const toggleSelectAll = () => {
+    if (rows.length === 0) return;
     if (selectedRowIds.length === rows.length) {
       setSelectedRowIds([]);
+      setLastSelectedRowIndex(null);
     } else {
       setSelectedRowIds(rows.map((r) => r._id));
+      setIsSelectionMode(true);
+      setLastSelectedRowIndex(null);
     }
   };
 
-  const toggleSelectRow = (id: string) => {
-    if (selectedRowIds.includes(id)) {
-      setSelectedRowIds(selectedRowIds.filter((r) => r !== id));
-    } else {
-      setSelectedRowIds([...selectedRowIds, id]);
+  const toggleSelectRow = (id: string, rowIndex: number, shiftKey = false) => {
+    setIsSelectionMode(true);
+
+    if (shiftKey && lastSelectedRowIndex !== null && lastSelectedRowIndex !== rowIndex) {
+      const start = Math.min(lastSelectedRowIndex, rowIndex);
+      const end = Math.max(lastSelectedRowIndex, rowIndex);
+      const rangeIds = rows.slice(start, end + 1).map((r) => r._id);
+      setSelectedRowIds((prev) => Array.from(new Set([...prev, ...rangeIds])));
+      setLastSelectedRowIndex(rowIndex);
+      return;
     }
+
+    setSelectedRowIds((prev) =>
+      prev.includes(id) ? prev.filter((r) => r !== id) : [...prev, id]
+    );
+    setLastSelectedRowIndex(rowIndex);
+  };
+
+  const openBulkUpdateModal = () => {
+    if (selectedRowIds.length === 0) return;
+    const defaultCol =
+      visibleColumns.find((c) => !c.isPrimaryKey) ||
+      visibleColumns[0] ||
+      sheet.columns[0];
+    if (defaultCol) {
+      setBulkTargetColKey(defaultCol.key);
+      if (defaultCol.type === 'boolean') {
+        setBulkNewValue('true');
+      } else {
+        setBulkNewValue('');
+      }
+    }
+    setBulkActionModal('update_column');
+  };
+
+  const openBulkMoveModal = () => {
+    if (selectedRowIds.length === 0) return;
+    const otherSheets = allSheets.filter((s) => s.id !== sheet.id);
+    setBulkTargetSheetId(otherSheets[0]?.id || '__NEW__');
+    setBulkNewSheetName(`${sheet.name} (Pindahan)`);
+    setBulkIncludeUnmatchedCols(false);
+    setBulkActionModal('move_sheet');
+  };
+
+  const handleApplyBulkUpdate = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!onBulkUpdateColumn || selectedRowIds.length === 0 || !bulkTargetColKey) return;
+
+    const targetCol = sheet.columns.find((c) => c.key === bulkTargetColKey);
+    let parsedVal: any = bulkNewValue;
+
+    if (typeof bulkNewValue === 'string' && bulkNewValue.trim().startsWith('=')) {
+      parsedVal = bulkNewValue.trim();
+    } else if (targetCol) {
+      if (
+        targetCol.type === 'number' ||
+        targetCol.type === 'currency' ||
+        targetCol.type === 'percentage' ||
+        targetCol.type === 'rating'
+      ) {
+        const num = Number(bulkNewValue.replace(/[^\d.-]/g, ''));
+        parsedVal = isNaN(num) || bulkNewValue.trim() === '' ? 0 : num;
+      } else if (targetCol.type === 'boolean') {
+        parsedVal =
+          bulkNewValue === 'true' || bulkNewValue === 'Ya' || bulkNewValue === '1';
+      }
+    }
+
+    onBulkUpdateColumn(selectedRowIds, bulkTargetColKey, parsedVal);
+    setBulkActionModal(null);
+  };
+
+  const handleApplyBulkMove = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!onMoveRowsToSheet || selectedRowIds.length === 0 || !bulkTargetSheetId) return;
+
+    onMoveRowsToSheet(selectedRowIds, bulkTargetSheetId, {
+      newSheetName: bulkNewSheetName,
+      includeUnmatchedColumns: bulkIncludeUnmatchedCols,
+    });
+    exitSelectionMode();
+  };
+
+  const handleConfirmBulkDelete = () => {
+    if (selectedRowIds.length === 0) return;
+    onDeleteRows(selectedRowIds);
+    exitSelectionMode();
   };
 
   const showRelationalPopover = (
@@ -743,8 +1150,8 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
                 }
               }}
               onKeyDown={handleFormulaBarKeyDown}
-              placeholder="Ketik nilai atau rumus Excel (contoh: =SUM(A1:A5), =AVG(F1:F10), =F2 * G2, =[Quantity]*[UnitPrice])..."
-              className="w-full bg-white border border-slate-300 rounded-lg pl-3 pr-32 py-1.5 text-xs text-slate-900 font-mono outline-hidden focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all shadow-2xs placeholder:text-slate-400"
+              placeholder="Ketik nilai atau rumus Excel (contoh: =SUM(A1:A5), =AI(&quot;Analisis&quot;, B2:F2), =[Qty]*[Price])..."
+              className="w-full bg-white border border-slate-300 rounded-lg pl-3 pr-44 py-1.5 text-xs text-slate-900 font-mono outline-hidden focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all shadow-2xs placeholder:text-slate-400"
             />
 
             {/* Live Calculation Preview Badge */}
@@ -753,80 +1160,47 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
                 className={`absolute right-2 px-2 py-0.5 rounded text-[11px] font-mono font-bold flex items-center gap-1 border shadow-2xs animate-in fade-in duration-150 ${
                   liveFormulaPreview.isError
                     ? 'bg-rose-50 text-rose-700 border-rose-200'
+                    : liveFormulaPreview.isAIHint
+                    ? 'bg-blue-50 text-blue-700 border-blue-200 font-sans font-semibold'
                     : 'bg-emerald-50 text-emerald-800 border-emerald-200'
                 }`}
                 title={`Kalkulasi instan: ${liveFormulaPreview.value}`}
               >
-                <span className="text-[10px] opacity-75 font-sans font-semibold">Hasil:</span>
+                {!liveFormulaPreview.isAIHint && (
+                  <span className="text-[10px] opacity-75 font-sans font-semibold">Hasil:</span>
+                )}
                 <span>{liveFormulaPreview.value}</span>
               </div>
             )}
           </div>
         </div>
 
-        {/* Bottom Secondary Row: Quick Excel Functions + Guide buttons */}
+        {/* Bottom Secondary Row: Action & Guide buttons */}
         <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5 text-xs">
-          <div className="flex items-center gap-1">
-            <span className="text-[11px] font-semibold text-slate-500 mr-1 flex items-center gap-1">
-              <span>Sisipkan Rumus Cepat:</span>
-            </span>
-            <div className="flex items-center gap-1 bg-slate-200/60 p-0.5 rounded-md">
-              <button
-                type="button"
-                onClick={() => handleInsertQuickFormula('SUM')}
-                className="px-2 py-0.5 text-[11px] font-mono font-semibold bg-white text-slate-700 rounded hover:bg-blue-50 hover:text-blue-700 transition-colors shadow-2xs cursor-pointer"
-                title="Sisipkan rumus penjumlahan: =SUM(range)"
-              >
-                =SUM(range)
-              </button>
-              <button
-                type="button"
-                onClick={() => handleInsertQuickFormula('AVG')}
-                className="px-2 py-0.5 text-[11px] font-mono font-semibold bg-white text-slate-700 rounded hover:bg-emerald-50 hover:text-emerald-700 transition-colors shadow-2xs cursor-pointer"
-                title="Sisipkan rumus rata-rata: =AVG(range)"
-              >
-                =AVG(range)
-              </button>
-              <button
-                type="button"
-                onClick={() => handleInsertQuickFormula('COUNT')}
-                className="px-2 py-0.5 text-[11px] font-mono font-semibold bg-white text-slate-700 rounded hover:bg-amber-50 hover:text-amber-700 transition-colors shadow-2xs cursor-pointer"
-                title="Sisipkan rumus total baris: =COUNT(range)"
-              >
-                =COUNT(range)
-              </button>
-              <button
-                type="button"
-                onClick={() => handleInsertQuickFormula('MIN')}
-                className="px-2 py-0.5 text-[11px] font-mono font-semibold bg-white text-slate-700 rounded hover:bg-sky-50 hover:text-sky-700 transition-colors shadow-2xs cursor-pointer"
-                title="Sisipkan nilai terendah: =MIN(range)"
-              >
-                =MIN(range)
-              </button>
-              <button
-                type="button"
-                onClick={() => handleInsertQuickFormula('MAX')}
-                className="px-2 py-0.5 text-[11px] font-mono font-semibold bg-white text-slate-700 rounded hover:bg-rose-50 hover:text-rose-700 transition-colors shadow-2xs cursor-pointer"
-                title="Sisipkan nilai tertinggi: =MAX(range)"
-              >
-                =MAX(range)
-              </button>
-              <button
-                type="button"
-                onClick={() => handleInsertQuickFormula('MULTIPLY')}
-                className="px-2 py-0.5 text-[11px] font-mono font-semibold bg-white text-slate-700 rounded hover:bg-teal-50 hover:text-teal-700 transition-colors shadow-2xs cursor-pointer"
-                title="Sisipkan rumus perkalian kolom: =[Quantity] * [UnitPrice]"
-              >
-                =[Qty]*[Price]
-              </button>
-            </div>
-          </div>
-
           <div className="flex items-center gap-1.5">
             <button
               type="button"
+              onClick={toggleSelectionMode}
+              className={`flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-semibold border rounded-md transition-colors shadow-2xs cursor-pointer whitespace-nowrap shrink-0 ${
+                isSelectionMode || selectedRowIds.length > 0
+                  ? 'bg-blue-600 text-white border-blue-600 hover:bg-blue-700'
+                  : 'text-slate-700 bg-white border-slate-200 hover:bg-slate-50'
+              }`}
+              title="Aktifkan mode seleksi untuk memilih beberapa baris dan menjalankan aksi massal"
+            >
+              <CheckSquare className="w-3.5 h-3.5" />
+              <span>Mode Seleksi</span>
+              {selectedRowIds.length > 0 && (
+                <span className="font-mono tabular-nums text-[10px] bg-white/20 px-1.5 rounded">
+                  {selectedRowIds.length}
+                </span>
+              )}
+            </button>
+
+            <button
+              type="button"
               onClick={() => setShowFormulaHelp(true)}
-              className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium text-slate-700 bg-white hover:bg-blue-50/60 hover:text-blue-700 border border-slate-200 hover:border-blue-200 rounded-md transition-colors shadow-2xs cursor-pointer"
+              className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium text-slate-700 bg-white hover:bg-blue-50/60 hover:text-blue-700 border border-slate-200 hover:border-blue-200 rounded-md transition-colors shadow-2xs cursor-pointer whitespace-nowrap shrink-0"
               title="Lihat panduan sintaks rumus spreadsheet"
             >
               <HelpCircle className="w-3.5 h-3.5 text-blue-500" />
@@ -836,7 +1210,7 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
             <button
               type="button"
               onClick={() => openValidationModal()}
-              className={`flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium border rounded-md transition-colors shadow-2xs cursor-pointer ${
+              className={`flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium border rounded-md transition-colors shadow-2xs cursor-pointer whitespace-nowrap shrink-0 ${
                 validationErrors.size > 0
                   ? 'text-rose-700 bg-rose-50 border-rose-200 hover:bg-rose-100'
                   : 'text-slate-700 bg-white border-slate-200 hover:bg-slate-50'
@@ -851,25 +1225,201 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
                 </span>
               )}
             </button>
-
-            {selectedRowIds.length > 0 && (
-              <button
-                onClick={() => {
-                  onDeleteRows(selectedRowIds);
-                  setSelectedRowIds([]);
-                }}
-                className="flex items-center gap-1 text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors cursor-pointer"
-              >
-                <Trash2 className="w-3 h-3" />
-                <span>Hapus ({selectedRowIds.length})</span>
-              </button>
-            )}
           </div>
         </div>
       </div>
 
+      {/* Contextual Bulk Selection Action Bar */}
+      {(isSelectionMode || selectedRowIds.length > 0) && (
+        <div className="bg-blue-50/70 border-b border-blue-200/90 px-4 py-2 flex flex-wrap items-center justify-between gap-3 text-xs animate-in fade-in duration-150">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2 text-slate-900 font-semibold">
+              <CheckSquare className="w-4 h-4 text-blue-600 shrink-0" />
+              <span className="tabular-nums">
+                {selectedRowIds.length > 0
+                  ? `${selectedRowIds.length} dari ${rows.length} baris terpilih`
+                  : 'Mode Seleksi Aktif'}
+              </span>
+            </div>
+
+            <span className="text-slate-300" aria-hidden="true">|</span>
+
+            {selectedRowIds.length === 0 ? (
+              <span className="text-[11px] text-slate-600">
+                Centang baris yang diinginkan atau tahan <kbd className="px-1 py-0.5 bg-white border border-slate-300 rounded font-mono text-[10px]">Shift</kbd> untuk memilih rentang baris.
+              </span>
+            ) : null}
+
+            <div className="flex items-center gap-2">
+              {selectedRowIds.length < rows.length && rows.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedRowIds(rows.map((r) => r._id))}
+                  className="text-[11px] font-semibold text-blue-700 hover:text-blue-900 hover:underline cursor-pointer whitespace-nowrap"
+                >
+                  Pilih Semua ({rows.length})
+                </button>
+              )}
+              {selectedRowIds.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedRowIds([]);
+                    setLastSelectedRowIndex(null);
+                  }}
+                  className="text-[11px] font-medium text-slate-600 hover:text-slate-900 hover:underline cursor-pointer whitespace-nowrap"
+                >
+                  Bersihkan Pilihan
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              disabled={selectedRowIds.length === 0 || !onBulkUpdateColumn}
+              onClick={openBulkUpdateModal}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 rounded-md text-[11px] font-semibold transition-colors shadow-2xs disabled:opacity-45 disabled:cursor-not-allowed cursor-pointer whitespace-nowrap shrink-0"
+              title="Ubah nilai kolom pada seluruh baris yang dipilih sekaligus"
+            >
+              <Edit3 className="w-3.5 h-3.5 text-blue-600" />
+              <span>Ubah Nilai Kolom</span>
+            </button>
+
+            <button
+              type="button"
+              disabled={selectedRowIds.length === 0 || !onMoveRowsToSheet}
+              onClick={openBulkMoveModal}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 rounded-md text-[11px] font-semibold transition-colors shadow-2xs disabled:opacity-45 disabled:cursor-not-allowed cursor-pointer whitespace-nowrap shrink-0"
+              title="Pindahkan baris terpilih ke sheet lain atau buat sheet baru"
+            >
+              <FolderInput className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Pindahkan ke Sheet</span>
+            </button>
+
+            <button
+              type="button"
+              disabled={selectedRowIds.length === 0}
+              onClick={() => setBulkActionModal('confirm_delete')}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-rose-50 text-rose-700 border border-rose-200 rounded-md text-[11px] font-semibold transition-colors shadow-2xs disabled:opacity-45 disabled:cursor-not-allowed cursor-pointer whitespace-nowrap shrink-0"
+              title="Hapus seluruh baris yang dipilih"
+            >
+              <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+              <span>Hapus ({selectedRowIds.length})</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={exitSelectionMode}
+              className="flex items-center gap-1 px-2.5 py-1.5 text-slate-600 hover:text-slate-900 hover:bg-blue-100/60 rounded-md text-[11px] font-medium transition-colors cursor-pointer whitespace-nowrap shrink-0"
+              title="Keluar dari Mode Seleksi"
+            >
+              <X className="w-3.5 h-3.5" />
+              <span>Selesai</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Contextual Full-Text AI Cell Analysis Reader (only shown when selected cell uses =AI()) */}
+      {selectedCell && (() => {
+        const rawSelected = formulaEngine.getRawCellValue(selectedCell.rowId, selectedCell.colKey);
+        if (!isAIFormula(rawSelected)) return null;
+        const aiMeta = formulaEngine.getAICellMeta(selectedCell.rowId, selectedCell.colKey);
+        if (!aiMeta) return null;
+        const cellCoord = `${columnIndexToLetter(selectedCell.colIndex)}${selectedCell.rowIndex + 1}`;
+        const cellKey = `${selectedCell.rowId}:${selectedCell.colKey}`;
+
+        return (
+          <div className="bg-slate-50 border-b border-slate-200 px-4 py-2 flex items-start justify-between gap-3 text-xs animate-in fade-in duration-150">
+            <div className="flex items-start gap-2.5 min-w-0 flex-1">
+              <div className="mt-0.5 p-1 rounded bg-blue-50 border border-blue-200/80 text-blue-700 shrink-0">
+                {aiMeta.status === 'loading' || aiMeta.status === 'pending' ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <FileSearch className="w-3.5 h-3.5" />
+                )}
+              </div>
+              <div className="min-w-0 flex-1 space-y-0.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-semibold text-slate-800">
+                    Hasil Analisis Sel{' '}
+                    <span className="font-mono text-blue-800">{cellCoord}</span>
+                  </span>
+                  {aiMeta.request.prompt && (
+                    <span className="text-[11px] text-slate-500 truncate max-w-md">
+                      Instruksi: &ldquo;{aiMeta.request.prompt}&rdquo;
+                    </span>
+                  )}
+                </div>
+                {aiMeta.status === 'loading' || aiMeta.status === 'pending' ? (
+                  <p className="text-slate-500 italic text-xs">
+                    Sedang menganalisis data sel dengan Gemini...
+                  </p>
+                ) : aiMeta.status === 'error' ? (
+                  <p className="text-rose-700 font-medium text-xs whitespace-pre-wrap">
+                    Gagal menganalisis sel: {aiMeta.error || 'Terjadi kesalahan API.'}
+                  </p>
+                ) : (
+                  <p className="text-slate-800 text-xs leading-relaxed whitespace-pre-wrap">
+                    {aiMeta.result}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1.5 shrink-0">
+              {aiMeta.status === 'success' && aiMeta.result && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard?.writeText(aiMeta.result || '');
+                    setCopiedAICellKey(cellKey);
+                    setTimeout(() => setCopiedAICellKey(null), 1800);
+                  }}
+                  className="flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-md text-[11px] font-medium transition-colors cursor-pointer whitespace-nowrap"
+                  title="Salin hasil analisis ke clipboard"
+                >
+                  {copiedAICellKey === cellKey ? (
+                    <>
+                      <Check className="w-3 h-3 text-emerald-600" />
+                      <span className="text-emerald-700">Tersalin</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3 h-3" />
+                      <span>Salin</span>
+                    </>
+                  )}
+                </button>
+              )}
+
+              {onRefreshAICell && (
+                <button
+                  type="button"
+                  disabled={aiMeta.status === 'loading'}
+                  onClick={() => onRefreshAICell(aiMeta.cacheKey)}
+                  className="flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-blue-50 text-slate-700 hover:text-blue-700 border border-slate-200 hover:border-blue-200 rounded-md text-[11px] font-medium transition-colors cursor-pointer disabled:opacity-50 whitespace-nowrap"
+                  title="Jalankan ulang analisis Gemini untuk sel ini"
+                >
+                  <RefreshCw
+                    className={`w-3 h-3 ${aiMeta.status === 'loading' ? 'animate-spin' : ''}`}
+                  />
+                  <span>Perbarui</span>
+                </button>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Main Grid Viewport */}
-      <div className="flex-1 overflow-x-auto overflow-y-auto bg-slate-100/50">
+      <div
+        ref={gridContainerRef}
+        tabIndex={0}
+        className="flex-1 overflow-x-auto overflow-y-auto bg-slate-100/50 outline-hidden"
+      >
         <table
           style={{ minWidth: `${Math.max(1200, visibleColumns.reduce((sum, c) => sum + (c.width || 150), 60))}px` }}
           className="border-collapse table-fixed w-full text-xs text-left bg-white"
@@ -878,13 +1428,27 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
           <thead className="sticky top-0 z-20 bg-slate-100 border-b border-slate-300 shadow-2xs select-none">
             <tr>
               {/* Row Selector Column */}
-              <th className="w-12 px-2 py-2 text-center bg-slate-100 border-r border-slate-200 font-mono text-[11px] text-slate-500 sticky left-0 z-30 shadow-xs">
-                <input
-                  type="checkbox"
-                  checked={rows.length > 0 && selectedRowIds.length === rows.length}
-                  onChange={toggleSelectAll}
-                  className="rounded text-slate-800"
-                />
+              <th
+                className={`w-14 px-2 py-2 text-center border-r border-slate-200 font-mono text-[11px] sticky left-0 z-30 shadow-xs transition-colors ${
+                  isSelectionMode ? 'bg-blue-50 text-blue-800' : 'bg-slate-100 text-slate-500'
+                }`}
+              >
+                <div className="flex items-center justify-center gap-1">
+                  <input
+                    type="checkbox"
+                    checked={rows.length > 0 && selectedRowIds.length === rows.length}
+                    ref={(el) => {
+                      if (el) {
+                        el.indeterminate =
+                          selectedRowIds.length > 0 && selectedRowIds.length < rows.length;
+                      }
+                    }}
+                    onChange={toggleSelectAll}
+                    className="rounded border-slate-300 accent-blue-600 cursor-pointer"
+                    title="Pilih atau batalkan semua baris yang tampil"
+                    aria-label="Pilih semua baris"
+                  />
+                </div>
               </th>
 
               {/* Column Headers */}
@@ -1002,19 +1566,37 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
                   <tr
                     key={row._id}
                     className={`hover:bg-slate-50/80 transition-colors ${
-                      isRowSelected ? 'bg-blue-50/50' : rIdx % 2 === 1 ? 'bg-slate-50/25' : 'bg-white'
+                      isRowSelected ? 'bg-blue-50/60' : rIdx % 2 === 1 ? 'bg-slate-50/25' : 'bg-white'
                     }`}
                   >
                     {/* Row Number & Checkbox */}
-                    <td className="px-2 py-1.5 text-center border-r border-slate-200 font-mono text-[11px] text-slate-500 bg-slate-50/95 select-none sticky left-0 z-10 shadow-xs">
-                      <div className="flex items-center justify-center gap-1">
+                    <td
+                      onClick={(e) => {
+                        if ((e.target as HTMLElement).tagName !== 'INPUT') {
+                          toggleSelectRow(row._id, rIdx, e.shiftKey);
+                        }
+                      }}
+                      className={`px-2 py-1.5 text-center border-r border-slate-200 font-mono text-[11px] select-none sticky left-0 z-10 shadow-xs cursor-pointer transition-colors ${
+                        isRowSelected
+                          ? 'bg-blue-100/90 text-blue-900 font-semibold'
+                          : isSelectionMode
+                          ? 'bg-blue-50/60 text-slate-700'
+                          : 'bg-slate-50/95 text-slate-500'
+                      }`}
+                    >
+                      <div className="flex items-center justify-center gap-1.5">
                         <input
                           type="checkbox"
                           checked={isRowSelected}
-                          onChange={() => toggleSelectRow(row._id)}
-                          className="rounded text-slate-800"
+                          onChange={() => {}}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleSelectRow(row._id, rIdx, e.shiftKey);
+                          }}
+                          className="rounded border-slate-300 accent-blue-600 cursor-pointer"
+                          aria-label={`Pilih baris ${rIdx + 1}`}
                         />
-                        <span className="w-4 text-right">{rIdx + 1}</span>
+                        <span className="w-4 text-right tabular-nums">{rIdx + 1}</span>
                       </div>
                     </td>
 
@@ -1044,14 +1626,16 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
                       return (
                         <td
                           key={`${col.key}-${cIdx}`}
-                          onClick={() =>
+                          data-cell-key={`${row._id}:${col.key}`}
+                          onClick={() => {
                             setSelectedCell({
                               rowId: row._id,
                               colKey: col.key,
                               rowIndex: rIdx,
                               colIndex: cIdx,
-                            })
-                          }
+                            });
+                            gridContainerRef.current?.focus({ preventScroll: true });
+                          }}
                           onDoubleClick={() => handleStartEdit(row, col)}
                           title={
                             cellError
@@ -1130,7 +1714,11 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
                                 }}
                                 onKeyDown={handleKeyDown}
                                 onBlur={() => {
-                                  setTimeout(() => {
+                                  if (blurSaveTimerRef.current !== null) {
+                                    window.clearTimeout(blurSaveTimerRef.current);
+                                  }
+                                  blurSaveTimerRef.current = window.setTimeout(() => {
+                                    blurSaveTimerRef.current = null;
                                     handleSaveEdit();
                                   }, 180);
                                 }}
@@ -1154,17 +1742,58 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
                             // Formula Evaluated Cell
                             (() => {
                               const evalVal = evaluatedMap.get(`${row._id}:${col.key}`);
+                              const aiMeta = isAIFormula(rawVal)
+                                ? formulaEngine.getAICellMeta(row._id, col.key)
+                                : undefined;
                               const isError = typeof evalVal === 'string' && evalVal.startsWith('#');
+
+                              if (aiMeta && (aiMeta.status === 'loading' || aiMeta.status === 'pending')) {
+                                return (
+                                  <div
+                                    className="flex items-center justify-between gap-1.5 text-slate-500 relative z-10"
+                                    title={`Rumus AI: ${rawVal}\nStatus: Sedang menganalisis sel...`}
+                                  >
+                                    <div className="flex items-center gap-1.5 min-w-0 truncate">
+                                      <Loader2 className="w-3 h-3 animate-spin text-blue-600 shrink-0" />
+                                      <span className="truncate italic font-sans text-[11px]">
+                                        Menganalisis...
+                                      </span>
+                                    </div>
+                                    <span className="text-[9px] font-mono font-bold text-blue-700 bg-blue-50 border border-blue-200/80 px-1 rounded shrink-0">
+                                      AI
+                                    </span>
+                                  </div>
+                                );
+                              }
 
                               if (isError) {
                                 return (
                                   <span
                                     className="inline-flex items-center gap-1 text-red-600 bg-red-50 border border-red-200 px-1.5 py-0.5 rounded text-[11px] font-mono font-bold"
-                                    title={`Rumus: ${rawVal}\nError: ${evalVal}`}
+                                    title={`Rumus: ${rawVal}\nError: ${aiMeta?.error || evalVal}`}
                                   >
                                     <AlertTriangle className="w-3 h-3 text-red-500 shrink-0" />
                                     <span>{evalVal}</span>
                                   </span>
+                                );
+                              }
+
+                              if (aiMeta) {
+                                return (
+                                  <div
+                                    className="flex items-center justify-between gap-1.5 group/fcell relative z-10"
+                                    title={`${String(evalVal)}\n\nRumus: ${rawVal}`}
+                                  >
+                                    <span className="truncate font-sans font-medium text-slate-900">
+                                      {String(evalVal ?? '')}
+                                    </span>
+                                    <span
+                                      className="text-[9px] text-blue-700 bg-blue-50 border border-blue-200/80 font-mono select-none font-bold px-1 rounded shrink-0"
+                                      title={`Analisis AI: ${rawVal}`}
+                                    >
+                                      AI
+                                    </span>
+                                  </div>
                                 );
                               }
 
@@ -1674,6 +2303,370 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
           Tip: Segitiga merah di pojok kanan atas sel menandakan data tidak memenuhi aturan validasi kolom
         </div>
       </div>
+
+      {/* Bulk Update Column Modal */}
+      {bulkActionModal === 'update_column' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+              <div className="flex items-center gap-2">
+                <Edit3 className="w-4 h-4 text-blue-600" />
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">
+                    Ubah Nilai Kolom Massal
+                  </h3>
+                  <p className="text-[11px] text-slate-500 mt-0.5 tabular-nums">
+                    Menerapkan pembaruan ke {selectedRowIds.length} baris terpilih pada {sheet.name}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setBulkActionModal(null)}
+                className="p-1 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-200 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleApplyBulkUpdate} className="p-5 space-y-4 text-xs">
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1.5">
+                  Pilih Kolom Target
+                </label>
+                <select
+                  value={bulkTargetColKey}
+                  onChange={(e) => {
+                    const nextKey = e.target.value;
+                    setBulkTargetColKey(nextKey);
+                    const nextCol = sheet.columns.find((c) => c.key === nextKey);
+                    setBulkNewValue(nextCol?.type === 'boolean' ? 'true' : '');
+                  }}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white text-slate-900 font-medium focus:ring-2 focus:ring-blue-100 focus:border-blue-500 outline-hidden"
+                >
+                  {sheet.columns.map((c) => (
+                    <option key={c.key} value={c.key}>
+                      {c.name} ({c.type})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {(() => {
+                const targetCol = sheet.columns.find((c) => c.key === bulkTargetColKey);
+                if (!targetCol) return null;
+
+                // Gather existing unique values for category quick-select
+                const existingOptions =
+                  targetCol.type === 'category'
+                    ? Array.from(
+                        new Set([
+                          ...(targetCol.categoryColors
+                            ? Object.keys(targetCol.categoryColors)
+                            : []),
+                          ...sheet.data
+                            .map((r) => r[targetCol.key])
+                            .filter((v) => v !== null && v !== undefined && String(v).trim() !== '')
+                            .map((v) => String(v)),
+                        ])
+                      )
+                    : [];
+
+                // Relation target records if type === 'relation'
+                const relSheet =
+                  targetCol.type === 'relation' && targetCol.relation
+                    ? allSheets.find((s) => s.id === targetCol.relation?.targetSheetId)
+                    : null;
+
+                return (
+                  <div className="space-y-2">
+                    <label className="block font-semibold text-slate-700">
+                      Nilai Baru untuk Kolom "{targetCol.name}"
+                    </label>
+
+                    {targetCol.type === 'boolean' ? (
+                      <select
+                        value={bulkNewValue}
+                        onChange={(e) => setBulkNewValue(e.target.value)}
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white text-slate-900 font-medium focus:ring-2 focus:ring-blue-100 focus:border-blue-500 outline-hidden"
+                      >
+                        <option value="true">Ya (true)</option>
+                        <option value="false">Tidak (false)</option>
+                      </select>
+                    ) : relSheet && targetCol.relation ? (
+                      <select
+                        value={bulkNewValue}
+                        onChange={(e) => setBulkNewValue(e.target.value)}
+                        required
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white text-slate-900 font-mono text-xs focus:ring-2 focus:ring-blue-100 focus:border-blue-500 outline-hidden"
+                      >
+                        <option value="">-- Pilih record dari {relSheet.name} --</option>
+                        {relSheet.data.map((tr) => {
+                          const keyVal = tr[targetCol.relation!.targetColumnKey];
+                          const dispVal = targetCol.relation?.displayColumnKey
+                            ? tr[targetCol.relation.displayColumnKey]
+                            : '';
+                          return (
+                            <option key={tr._id} value={String(keyVal)}>
+                              {String(keyVal)}
+                              {dispVal ? ` · ${dispVal}` : ''}
+                            </option>
+                          );
+                        })}
+                      </select>
+                    ) : targetCol.type === 'date' ? (
+                      <input
+                        type="date"
+                        value={bulkNewValue}
+                        onChange={(e) => setBulkNewValue(e.target.value)}
+                        required
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white text-slate-900 font-mono focus:ring-2 focus:ring-blue-100 focus:border-blue-500 outline-hidden"
+                      />
+                    ) : (
+                      <div className="space-y-2">
+                        <input
+                          type="text"
+                          value={bulkNewValue}
+                          onChange={(e) => setBulkNewValue(e.target.value)}
+                          placeholder={
+                            targetCol.type === 'number' ||
+                            targetCol.type === 'currency' ||
+                            targetCol.type === 'percentage'
+                              ? 'Masukkan angka atau rumus (misal: 10 atau =[Quantity]*[UnitPrice])'
+                              : 'Masukkan nilai baru untuk seluruh baris terpilih...'
+                          }
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white text-slate-900 font-mono focus:ring-2 focus:ring-blue-100 focus:border-blue-500 outline-hidden"
+                          autoFocus
+                        />
+                        {existingOptions.length > 0 && (
+                          <div className="space-y-1">
+                            <span className="text-[11px] text-slate-500 block">
+                              Pilih cepat nilai yang tersedia:
+                            </span>
+                            <div className="flex flex-wrap gap-1.5">
+                              {existingOptions.map((opt) => (
+                                <button
+                                  key={opt}
+                                  type="button"
+                                  onClick={() => setBulkNewValue(opt)}
+                                  className={`px-2 py-1 rounded text-[11px] font-medium border transition-colors cursor-pointer ${
+                                    bulkNewValue === opt
+                                      ? 'bg-blue-600 text-white border-blue-600'
+                                      : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                                  }`}
+                                >
+                                  {opt}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
+              <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setBulkActionModal(null)}
+                  className="px-3.5 py-2 bg-slate-100 text-slate-700 font-semibold rounded-lg hover:bg-slate-200 transition-colors cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-slate-900 text-white font-semibold rounded-lg hover:bg-slate-800 transition-colors shadow-xs cursor-pointer tabular-nums"
+                >
+                  Terapkan ke {selectedRowIds.length} Baris
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Move Selected Rows to Sheet Modal */}
+      {bulkActionModal === 'move_sheet' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+              <div className="flex items-center gap-2">
+                <FolderInput className="w-4 h-4 text-emerald-600" />
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">
+                    Pindahkan Baris ke Sheet Lain
+                  </h3>
+                  <p className="text-[11px] text-slate-500 mt-0.5 tabular-nums">
+                    Memindahkan {selectedRowIds.length} baris dari "{sheet.name}"
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setBulkActionModal(null)}
+                className="p-1 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-200 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleApplyBulkMove} className="p-5 space-y-4 text-xs">
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1.5">
+                  Pilih Sheet Tujuan
+                </label>
+                <select
+                  value={bulkTargetSheetId}
+                  onChange={(e) => setBulkTargetSheetId(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white text-slate-900 font-medium focus:ring-2 focus:ring-blue-100 focus:border-blue-500 outline-hidden"
+                >
+                  {allSheets
+                    .filter((s) => s.id !== sheet.id)
+                    .map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name} ({s.data.length} baris · {s.columns.length} kolom)
+                      </option>
+                    ))}
+                  <option value="__NEW__">+ Buat Sheet Baru untuk Baris Ini</option>
+                </select>
+              </div>
+
+              {bulkTargetSheetId === '__NEW__' ? (
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1.5">
+                    Nama Sheet Baru
+                  </label>
+                  <input
+                    type="text"
+                    value={bulkNewSheetName}
+                    onChange={(e) => setBulkNewSheetName(e.target.value)}
+                    placeholder="Contoh: Arsip Pesanan Prioritas"
+                    required
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white text-slate-900 focus:ring-2 focus:ring-blue-100 focus:border-blue-500 outline-hidden"
+                  />
+                  <p className="text-[11px] text-slate-500 mt-1.5">
+                    Sheet baru akan dibuat dengan struktur kolom yang sama persis dengan "{sheet.name}".
+                  </p>
+                </div>
+              ) : (
+                (() => {
+                  const targetSheet = allSheets.find((s) => s.id === bulkTargetSheetId);
+                  if (!targetSheet) return null;
+
+                  const matchedCount = targetSheet.columns.filter((tc) =>
+                    sheet.columns.some(
+                      (sc) =>
+                        sc.key === tc.key ||
+                        sc.name.trim().toLowerCase() === tc.name.trim().toLowerCase()
+                    )
+                  ).length;
+
+                  const unmatchedSourceCount = sheet.columns.filter(
+                    (sc) =>
+                      !targetSheet.columns.some(
+                        (tc) =>
+                          tc.key === sc.key ||
+                          tc.name.trim().toLowerCase() === sc.name.trim().toLowerCase()
+                      )
+                  ).length;
+
+                  return (
+                    <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-2.5">
+                      <div className="text-[11px] text-slate-700">
+                        <span className="font-semibold">Ringkasan Pemetaan Kolom:</span>{' '}
+                        <span className="font-mono font-bold text-slate-900 tabular-nums">
+                          {matchedCount}
+                        </span>{' '}
+                        kolom cocok otomatis dengan "{targetSheet.name}".
+                      </div>
+
+                      {unmatchedSourceCount > 0 && (
+                        <label className="flex items-start gap-2 text-[11px] text-slate-700 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={bulkIncludeUnmatchedCols}
+                            onChange={(e) => setBulkIncludeUnmatchedCols(e.target.checked)}
+                            className="mt-0.5 rounded border-slate-300 accent-blue-600"
+                          />
+                          <span>
+                            Sertakan {unmatchedSourceCount} kolom dari sheet asal yang belum ada di "{targetSheet.name}"
+                          </span>
+                        </label>
+                      )}
+                    </div>
+                  );
+                })()
+              )}
+
+              <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setBulkActionModal(null)}
+                  className="px-3.5 py-2 bg-slate-100 text-slate-700 font-semibold rounded-lg hover:bg-slate-200 transition-colors cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-slate-900 text-white font-semibold rounded-lg hover:bg-slate-800 transition-colors shadow-xs cursor-pointer tabular-nums"
+                >
+                  Pindahkan {selectedRowIds.length} Baris
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm Bulk Delete Modal */}
+      {bulkActionModal === 'confirm_delete' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-sm overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between bg-rose-50/70">
+              <div className="flex items-center gap-2 text-rose-800">
+                <Trash2 className="w-4 h-4 text-rose-600" />
+                <h3 className="text-sm font-bold">Konfirmasi Hapus Baris</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setBulkActionModal(null)}
+                className="p-1 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-200 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4 text-xs">
+              <p className="text-slate-700 leading-relaxed">
+                Anda akan menghapus{' '}
+                <strong className="font-mono text-slate-900 tabular-nums">
+                  {selectedRowIds.length} baris
+                </strong>{' '}
+                terpilih dari sheet <strong>{sheet.name}</strong>. Anda tetap dapat mengembalikan data ini melalui Undo (<kbd className="px-1 py-0.5 bg-slate-100 border border-slate-300 rounded font-mono text-[10px]">Ctrl+Z</kbd>).
+              </p>
+
+              <div className="pt-2 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setBulkActionModal(null)}
+                  className="px-3.5 py-2 bg-slate-100 text-slate-700 font-semibold rounded-lg hover:bg-slate-200 transition-colors cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmBulkDelete}
+                  className="px-4 py-2 bg-rose-600 text-white font-semibold rounded-lg hover:bg-rose-700 transition-colors shadow-xs cursor-pointer tabular-nums"
+                >
+                  Hapus {selectedRowIds.length} Baris
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Formula Autocomplete Dropdown Popover */}
       {autocompleteSuggestions.length > 0 && autocompletePosition && (

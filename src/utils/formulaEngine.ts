@@ -67,6 +67,59 @@ export function parseCellReference(token: string): CellReference | null {
   };
 }
 
+export interface AIFormulaCacheEntry {
+  status: 'loading' | 'success' | 'error';
+  result?: string;
+  error?: string;
+}
+
+export type AIFormulaCache = Record<string, AIFormulaCacheEntry>;
+
+export interface AICallTarget {
+  label: string;
+  value: unknown;
+}
+
+export interface AICallRequest {
+  cacheKey: string;
+  cellKey: string;
+  rowId: string;
+  colKey: string;
+  cellRef: string;
+  formula: string;
+  prompt: string;
+  sheetName: string;
+  columnName: string;
+  targets: AICallTarget[];
+  rowContext: Array<{ columnName: string; value: unknown }>;
+}
+
+export interface AICellMeta {
+  cacheKey: string;
+  status: 'pending' | 'loading' | 'success' | 'error';
+  result?: string;
+  error?: string;
+  request: AICallRequest;
+}
+
+export function isAIFormula(val: any): boolean {
+  if (!isFormula(val)) return false;
+  return /\bAI\s*\(/i.test(String(val));
+}
+
+function hashAIKey(input: string): string {
+  let h1 = 0xdeadbeef;
+  let h2 = 0x41c6ce57;
+  for (let i = 0; i < input.length; i++) {
+    const ch = input.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761);
+    h2 = Math.imul(h2 ^ ch, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return `ai_${(h2 >>> 0).toString(16)}_${(h1 >>> 0).toString(16)}`;
+}
+
 /**
  * Formula Parser and Evaluator Engine
  */
@@ -76,14 +129,26 @@ export class FormulaEngine {
   private visiting: Set<string> = new Set();
   private columnKeyToIndex: Map<string, number> = new Map();
   private columnNameToKey: Map<string, string> = new Map();
+  private aiCache: AIFormulaCache;
+  private aiRequests: Map<string, AICallRequest> = new Map();
+  private aiCellMeta: Map<string, AICellMeta> = new Map();
 
-  constructor(sheet: Sheet) {
+  constructor(sheet: Sheet, aiCache: AIFormulaCache = {}) {
     this.sheet = sheet;
+    this.aiCache = aiCache || {};
     sheet.columns.forEach((col, idx) => {
       this.columnKeyToIndex.set(col.key, idx);
       this.columnNameToKey.set(col.name.toLowerCase().trim(), col.key);
       this.columnNameToKey.set(col.key.toLowerCase().trim(), col.key);
     });
+  }
+
+  public getAIRequests(): AICallRequest[] {
+    return Array.from(this.aiRequests.values());
+  }
+
+  public getAICellMeta(rowId: string, colKey: string): AICellMeta | undefined {
+    return this.aiCellMeta.get(`${rowId}:${colKey}`);
   }
 
   /**
@@ -122,7 +187,7 @@ export class FormulaEngine {
     this.visiting.add(cellKey);
     let result: any;
     try {
-      result = this.evaluateExpression(formulaString, rowId, colKey);
+      result = this.evaluateExpression(formulaString, rowId, colKey, String(rawVal).trim(), true);
     } catch (err: any) {
       result = err.message.startsWith('#') ? err.message : '#ERROR!';
     } finally {
@@ -138,6 +203,8 @@ export class FormulaEngine {
    */
   public evaluateAll(): Map<string, any> {
     this.cache.clear();
+    this.aiRequests.clear();
+    this.aiCellMeta.clear();
     this.sheet.data.forEach((row) => {
       this.sheet.columns.forEach((col) => {
         this.evaluateCell(row._id, col.key);
@@ -155,7 +222,7 @@ export class FormulaEngine {
     const rId = rowId || this.sheet.data[0]?._id || 'temp-row';
     const cKey = colKey || this.sheet.columns[0]?.key || 'temp-col';
     try {
-      return this.evaluateExpression(expr, rId, cKey);
+      return this.evaluateExpression(expr, rId, cKey, formulaStr.trim(), false);
     } catch (err: any) {
       return err.message && err.message.startsWith('#') ? err.message : '#ERROR!';
     }
@@ -164,11 +231,35 @@ export class FormulaEngine {
   /**
    * Parse and evaluate formula expression
    */
-  private evaluateExpression(expr: string, currentRowId: string, currentColKey: string): any {
-    const tokens = this.tokenize(expr);
+  private evaluateExpression(
+    expr: string,
+    currentRowId: string,
+    currentColKey: string,
+    fullFormula?: string,
+    recordAIMeta: boolean = false
+  ): any {
+    const trimmedExpr = expr.trim();
+    const topLevelAIArgs = this.extractTopLevelAIArgs(trimmedExpr);
+    if (topLevelAIArgs !== null) {
+      return this.evaluateTopLevelAI(
+        topLevelAIArgs,
+        currentRowId,
+        currentColKey,
+        fullFormula || `=${trimmedExpr}`,
+        recordAIMeta
+      );
+    }
+
+    const tokens = this.tokenize(trimmedExpr);
     if (tokens.length === 0) return 0;
     const rpn = this.shuntingYard(tokens);
-    return this.evaluateRPN(rpn, currentRowId, currentColKey);
+    return this.evaluateRPN(
+      rpn,
+      currentRowId,
+      currentColKey,
+      fullFormula || `=${trimmedExpr}`,
+      recordAIMeta
+    );
   }
 
   /**
@@ -272,6 +363,8 @@ export class FormulaEngine {
   private shuntingYard(tokens: string[]): string[] {
     const output: string[] = [];
     const opStack: string[] = [];
+    const parenStack: Array<{ isFunc: boolean; argCount: number; hasArgToken: boolean }> = [];
+    let pendingFunc = false;
 
     const precedence: Record<string, number> = {
       '=': 1,
@@ -290,22 +383,31 @@ export class FormulaEngine {
     };
 
     const isFunction = (t: string) =>
-      ['SUM', 'AVG', 'AVERAGE', 'COUNT', 'COUNTA', 'MIN', 'MAX', 'ROUND', 'IF', 'PRODUCT', 'ABS'].includes(
+      ['SUM', 'AVG', 'AVERAGE', 'COUNT', 'COUNTA', 'MIN', 'MAX', 'ROUND', 'IF', 'PRODUCT', 'ABS', 'AI'].includes(
         t.toUpperCase()
       );
+
+    const markParenHasToken = () => {
+      if (parenStack.length > 0) {
+        parenStack[parenStack.length - 1].hasArgToken = true;
+      }
+    };
 
     for (let i = 0; i < tokens.length; i++) {
       const token = tokens[i];
 
       // Number or string literal
       if (!isNaN(Number(token)) || (token.startsWith('"') && token.endsWith('"'))) {
+        markParenHasToken();
         output.push(token);
         continue;
       }
 
       // Function
       if (isFunction(token)) {
+        markParenHasToken();
         opStack.push(token.toUpperCase());
+        pendingFunc = true;
         continue;
       }
 
@@ -313,6 +415,10 @@ export class FormulaEngine {
       if (token === ',') {
         while (opStack.length > 0 && opStack[opStack.length - 1] !== '(') {
           output.push(opStack.pop()!);
+        }
+        if (parenStack.length > 0) {
+          parenStack[parenStack.length - 1].argCount += 1;
+          parenStack[parenStack.length - 1].hasArgToken = false;
         }
         continue;
       }
@@ -341,6 +447,11 @@ export class FormulaEngine {
 
       // Left paren
       if (token === '(') {
+        if (!pendingFunc) {
+          markParenHasToken();
+        }
+        parenStack.push({ isFunc: pendingFunc, argCount: 0, hasArgToken: false });
+        pendingFunc = false;
         opStack.push('(');
         continue;
       }
@@ -353,13 +464,17 @@ export class FormulaEngine {
         if (opStack.length > 0 && opStack[opStack.length - 1] === '(') {
           opStack.pop(); // remove '('
         }
+        const pCtx = parenStack.pop();
+        const arity = pCtx ? (pCtx.hasArgToken ? pCtx.argCount + 1 : pCtx.argCount) : 0;
         if (opStack.length > 0 && isFunction(opStack[opStack.length - 1])) {
-          output.push(opStack.pop()!);
+          const fnName = opStack.pop()!;
+          output.push(fnName === 'AI' ? `AI#${arity}` : fnName);
         }
         continue;
       }
 
       // Cell reference, range, or column identifier
+      markParenHasToken();
       output.push(token);
     }
 
@@ -373,7 +488,13 @@ export class FormulaEngine {
   /**
    * Evaluates Reverse Polish Notation stack
    */
-  private evaluateRPN(rpn: string[], currentRowId: string, currentColKey: string): any {
+  private evaluateRPN(
+    rpn: string[],
+    currentRowId: string,
+    currentColKey: string,
+    fullFormula: string,
+    recordAIMeta: boolean
+  ): any {
     const stack: any[] = [];
 
     for (const token of rpn) {
@@ -404,7 +525,19 @@ export class FormulaEngine {
         continue;
       }
 
-      // 5. Functions
+      // 5. Variable-arity AI function
+      if (token.startsWith('AI#')) {
+        const arity = parseInt(token.split('#')[1] || '0', 10);
+        const args: any[] = [];
+        for (let a = 0; a < arity; a++) {
+          args.unshift(stack.pop());
+        }
+        const resolved = this.resolveAIValues(args, currentRowId, currentColKey, fullFormula, recordAIMeta);
+        stack.push(resolved);
+        continue;
+      }
+
+      // 5b. Standard Functions
       if (
         ['SUM', 'AVG', 'AVERAGE', 'COUNT', 'COUNTA', 'MIN', 'MAX', 'ROUND', 'IF', 'PRODUCT', 'ABS'].includes(
           token
@@ -664,13 +797,328 @@ export class FormulaEngine {
 
     return this.evaluateCell(currentRowId, col.key);
   }
+
+  /**
+   * Check if the expression is a single top-level AI(...) invocation and extract raw argument substrings
+   */
+  private extractTopLevelAIArgs(expr: string): string[] | null {
+    const match = expr.match(/^AI\s*\(/i);
+    if (!match) return null;
+
+    const openIdx = expr.indexOf('(');
+    if (openIdx === -1) return null;
+
+    const args: string[] = [];
+    let current = '';
+    let depth = 0;
+    let inQuote: '"' | "'" | null = null;
+    let inBracket = false;
+
+    for (let i = openIdx; i < expr.length; i++) {
+      const ch = expr[i];
+
+      if (inQuote) {
+        current += ch;
+        if (ch === inQuote) inQuote = null;
+        continue;
+      }
+
+      if (ch === '"' || ch === "'") {
+        inQuote = ch;
+        current += ch;
+        continue;
+      }
+
+      if (ch === '[') {
+        inBracket = true;
+        current += ch;
+        continue;
+      }
+
+      if (ch === ']' && inBracket) {
+        inBracket = false;
+        current += ch;
+        continue;
+      }
+
+      if (!inBracket) {
+        if (ch === '(') {
+          depth++;
+          if (depth === 1) continue; // skip outer '('
+        } else if (ch === ')') {
+          depth--;
+          if (depth === 0) {
+            if (i !== expr.length - 1) {
+              // Trailing tokens exist outside AI(...)
+              return null;
+            }
+            if (current.trim().length > 0 || args.length > 0) {
+              args.push(current.trim());
+            }
+            return args;
+          }
+        } else if ((ch === ',' || ch === ';') && depth === 1) {
+          args.push(current.trim());
+          current = '';
+          continue;
+        }
+      }
+
+      current += ch;
+    }
+
+    return null;
+  }
+
+  /**
+   * Resolve labeled targets and prompt for top-level =AI(...) calls
+   */
+  private evaluateTopLevelAI(
+    rawArgs: string[],
+    currentRowId: string,
+    currentColKey: string,
+    fullFormula: string,
+    recordAIMeta: boolean
+  ): string {
+    const promptParts: string[] = [];
+    const targets: AICallTarget[] = [];
+
+    for (const arg of rawArgs) {
+      if (!arg) continue;
+
+      // Quoted prompt string literal
+      if (
+        (arg.startsWith('"') && arg.endsWith('"') && arg.length >= 2) ||
+        (arg.startsWith("'") && arg.endsWith("'") && arg.length >= 2)
+      ) {
+        const unquoted = arg.slice(1, -1).trim();
+        if (unquoted) promptParts.push(unquoted);
+        continue;
+      }
+
+      // Range reference like B2:G2 or $F$1:$F$10
+      if (arg.includes(':') && !/[+\-*/^%()"]/.test(arg)) {
+        const labeledRange = this.resolveLabeledRangeValues(arg, currentRowId, currentColKey);
+        targets.push(...labeledRange);
+        continue;
+      }
+
+      // Single cell reference like F2 or $F$2
+      const cellRef = parseCellReference(arg);
+      if (cellRef) {
+        const val = this.resolveCellRefValue(cellRef);
+        const colDef = this.sheet.columns[cellRef.colIndex];
+        const colLabel = colDef ? `${cellRef.colLetter}${cellRef.rowNumber} (${colDef.name})` : arg.toUpperCase();
+        targets.push({ label: colLabel, value: val });
+        continue;
+      }
+
+      // Bracketed column reference like [TotalAmount]
+      if (arg.startsWith('[') && arg.endsWith(']')) {
+        const colId = arg.slice(1, -1).trim();
+        const colKey = this.columnNameToKey.get(colId.toLowerCase()) || colId;
+        const colDef = this.sheet.columns.find((c) => c.key === colKey);
+        const val = this.resolveColumnInCurrentRow(colId, currentRowId);
+        targets.push({ label: colDef?.name || colId, value: val });
+        continue;
+      }
+
+      // General sub-expression (e.g. SUM(F1:F5), [Qty]*[Price], number)
+      const val = this.evaluateExpression(arg, currentRowId, currentColKey, fullFormula, false);
+      targets.push({ label: arg, value: val });
+    }
+
+    return this.finalizeAICall(
+      promptParts.join(' — '),
+      targets,
+      currentRowId,
+      currentColKey,
+      fullFormula,
+      recordAIMeta
+    );
+  }
+
+  /**
+   * Fallback AI invocation resolver when AI() is nested inside another expression like IF(...)
+   */
+  private resolveAIValues(
+    args: any[],
+    currentRowId: string,
+    currentColKey: string,
+    fullFormula: string,
+    recordAIMeta: boolean
+  ): string {
+    const promptParts: string[] = [];
+    const targets: AICallTarget[] = [];
+
+    args.forEach((arg, idx) => {
+      if (Array.isArray(arg)) {
+        arg.slice(0, 60).forEach((item, i) => {
+          targets.push({ label: `Item ${i + 1}`, value: item });
+        });
+      } else if (typeof arg === 'string' && idx === 0 && args.length > 1) {
+        promptParts.push(arg);
+      } else {
+        targets.push({ label: `Argumen ${idx + 1}`, value: arg });
+      }
+    });
+
+    return this.finalizeAICall(
+      promptParts.join(' — '),
+      targets,
+      currentRowId,
+      currentColKey,
+      fullFormula,
+      recordAIMeta
+    );
+  }
+
+  private resolveLabeledRangeValues(
+    rangeToken: string,
+    currentRowId: string,
+    currentColKey: string
+  ): AICallTarget[] {
+    const parts = rangeToken.split(':').map((s) => s.trim());
+    if (parts.length !== 2) return [];
+
+    const startPart = parts[0];
+    const endPart = parts[1];
+    const items: AICallTarget[] = [];
+    const maxItems = 60;
+
+    if (/^\$?[A-Za-z]+$/.test(startPart) && /^\$?[A-Za-z]+$/.test(endPart)) {
+      const colLetter = startPart.replace(/\$/g, '').toUpperCase();
+      const colIndex = letterToColumnIndex(colLetter);
+      const colDef = this.sheet.columns[colIndex];
+      if (!colDef) return [];
+
+      for (let r = 0; r < this.sheet.data.length && items.length < maxItems; r++) {
+        const row = this.sheet.data[r];
+        if (row._id === currentRowId && colDef.key === currentColKey) continue;
+        const val = this.evaluateCell(row._id, colDef.key);
+        items.push({
+          label: `${colLetter}${r + 1} (${colDef.name})`,
+          value: val,
+        });
+      }
+      return items;
+    }
+
+    const startRef = parseCellReference(startPart);
+    const endRef = parseCellReference(endPart);
+    if (!startRef || !endRef) return [];
+
+    const minCol = Math.min(startRef.colIndex, endRef.colIndex);
+    const maxCol = Math.max(startRef.colIndex, endRef.colIndex);
+    const minRow = Math.min(startRef.rowIndex, endRef.rowIndex);
+    const maxRow = Math.max(startRef.rowIndex, endRef.rowIndex);
+
+    for (let r = minRow; r <= maxRow && items.length < maxItems; r++) {
+      if (r < 0 || r >= this.sheet.data.length) continue;
+      const row = this.sheet.data[r];
+
+      for (let c = minCol; c <= maxCol && items.length < maxItems; c++) {
+        if (c < 0 || c >= this.sheet.columns.length) continue;
+        const col = this.sheet.columns[c];
+        if (row._id === currentRowId && col.key === currentColKey) continue;
+        const val = this.evaluateCell(row._id, col.key);
+        items.push({
+          label: `${columnIndexToLetter(c)}${r + 1} (${col.name})`,
+          value: val,
+        });
+      }
+    }
+
+    return items;
+  }
+
+  private finalizeAICall(
+    prompt: string,
+    targets: AICallTarget[],
+    currentRowId: string,
+    currentColKey: string,
+    fullFormula: string,
+    recordAIMeta: boolean
+  ): string {
+    const rowIdx = this.sheet.data.findIndex((r) => r._id === currentRowId);
+    const colIdx = this.columnKeyToIndex.get(currentColKey) ?? 0;
+    const colDef = this.sheet.columns[colIdx];
+    const cellRef = `${columnIndexToLetter(colIdx)}${rowIdx >= 0 ? rowIdx + 1 : 1}`;
+    const cellKey = `${currentRowId}:${currentColKey}`;
+
+    // Build concise row context (exclude self and pending AI placeholders)
+    const row = rowIdx >= 0 ? this.sheet.data[rowIdx] : undefined;
+    const rowContext: Array<{ columnName: string; value: unknown }> = [];
+    if (row) {
+      for (const col of this.sheet.columns) {
+        if (col.key === currentColKey) continue;
+        const raw = row[col.key];
+        if (raw === undefined || raw === null || raw === '') continue;
+        if (isAIFormula(raw)) continue;
+        const val = isFormula(raw) ? this.evaluateCell(row._id, col.key) : raw;
+        rowContext.push({ columnName: col.name, value: val });
+      }
+    }
+
+    // If no explicit targets were passed (e.g. =AI("Analisis baris ini") or =AI()), analyze rowContext
+    const effectiveTargets =
+      targets.length > 0
+        ? targets
+        : rowContext.map((c) => ({ label: c.columnName, value: c.value }));
+
+    const keyPayload = JSON.stringify({
+      sheetId: this.sheet.id,
+      prompt: prompt.trim(),
+      targets: effectiveTargets,
+      rowContext: targets.length > 0 ? rowContext.slice(0, 8) : [],
+    });
+    const cacheKey = hashAIKey(keyPayload);
+
+    const request: AICallRequest = {
+      cacheKey,
+      cellKey,
+      rowId: currentRowId,
+      colKey: currentColKey,
+      cellRef,
+      formula: fullFormula,
+      prompt: prompt.trim(),
+      sheetName: this.sheet.name,
+      columnName: colDef?.name || currentColKey,
+      targets: effectiveTargets,
+      rowContext: targets.length > 0 ? rowContext.slice(0, 12) : [],
+    };
+
+    const cached = this.aiCache[cacheKey];
+
+    if (recordAIMeta) {
+      this.aiRequests.set(cellKey, request);
+      this.aiCellMeta.set(cellKey, {
+        cacheKey,
+        status: cached ? cached.status : 'pending',
+        result: cached?.result,
+        error: cached?.error,
+        request,
+      });
+    }
+
+    if (cached?.status === 'success') {
+      return cached.result ?? '';
+    }
+    if (cached?.status === 'error') {
+      return '#AI_ERR!';
+    }
+    if (!recordAIMeta) {
+      return 'Tekan Enter untuk menganalisis dengan AI';
+    }
+    return 'Menganalisis...';
+  }
 }
 
 /**
  * Returns a copy of the sheet with all formulas evaluated into concrete values
  */
-export function getEvaluatedSheet(sheet: Sheet): Sheet {
-  const engine = new FormulaEngine(sheet);
+export function getEvaluatedSheet(sheet: Sheet, aiCache: AIFormulaCache = {}): Sheet {
+  const engine = new FormulaEngine(sheet, aiCache);
   const evalData: RowData[] = sheet.data.map((row) => {
     const newRow: Record<string, any> = { ...row };
     sheet.columns.forEach((col) => {
@@ -743,5 +1191,11 @@ export const FORMULA_DOCS: FormulaDocItem[] = [
     syntax: '=IF(kondisi, nilai_jika_benar, nilai_jika_salah)',
     desc: 'Evaluasi logika IF dengan perbandingan >, <, =, !=.',
     example: '=IF(F2 > 10000000, "High Value", "Normal")',
+  },
+  {
+    name: 'AI (Analisis Sel)',
+    syntax: '=AI("instruksi", sel_atau_rentang)',
+    desc: 'Menganalisis nilai sel, rentang data, atau konteks baris secara cerdas menggunakan Gemini AI.',
+    example: '=AI("Klasifikasikan risiko & ringkas transaksi", B2:G2) atau =AI(F2)',
   },
 ];
